@@ -187,5 +187,28 @@ public class UseAtomicStampedReference {
 
 - 原子更新字段类： AtomicReferenceFieldUpdater，AtomicIntegerFieldUpdater，AtomicLongFieldUpdater
 
+作业：现在有一个残缺的AtomicInteger类只实现了线程安全的：get方法和compareAndSet()方法
+
+```JAVA
+public class HalfAtomicInt {
+    private AtomicInteger atomicI = new AtomicInteger(0);
+
+    public void increament() {
+        // 为什么在for循环里面取值，是为了i值不变化
+        for (; ; ) {
+            int i = atomicI.get();
+            boolean suc = atomicI.compareAndSet(i, ++i);
+            if (suc) {
+                break;
+            }
+        }
+    }
+
+    public int getCount() {
+        return atomicI.get();
+    }
+}
+```
+
 **注**：[相关代码](../code/concurrent)
 
