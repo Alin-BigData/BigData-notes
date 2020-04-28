@@ -5,7 +5,6 @@
 ## 基础
 
 - [java基础](https://github.com/wangfulin7/wangfulin7-notes/blob/master/2019-08-18-JAVA%E5%9F%BA%E7%A1%80.md)
-- [sql](https://github.com/wangfulin7/wangfulin7-notes/blob/master/2019-08-13-MYSQL.md)
 
 ## 并发编程
 
@@ -14,6 +13,14 @@
 - [原子操作CAS](./并发编程/原子操作CAS.md)
 - [显式锁和AQS](./并发编程/显式锁和AQS.md)
 - [实战项目-并发任务执行框架](./并发编程/实战项目-并发任务执行框架.md)
+
+## 数据库
+
+Mysql理论学习
+
+- [Mysql基础练习](./数据库/Mysql基础练习.md)
+
+- [Mysql理论学习](./数据库/Mysql理论学习.md)
 
 ## 基础技能
 
