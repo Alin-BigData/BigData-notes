@@ -338,3 +338,145 @@ mysql> SELECT s.*
 
 ```
 
+- 11、查询没有学全所有课程的同学的信息
+
+```mysql
+mysql> SELECT
+    -> * 
+    -> FROM
+    -> student 
+    -> WHERE
+    -> s_no IN ( SELECT s_no AS num FROM score GROUP BY s_no HAVING COUNT( c_no ) < ( SELECT COUNT( c_no ) FROM course ) );
++------+--------+------------+-------+
+| s_no | s_name | s_birthday | s_sex |
++------+--------+------------+-------+
+| 05   | 周梅   | 1991-12-01 | 女    |
+| 06   | 吴兰   | 1992-03-01 | 女    |
+| 07   | 郑竹   | 1989-07-01 | 女    |
++------+--------+------------+-------+
+3 rows in set (0.00 sec)
+```
+
+- 12、查询至少有一门课与学号为"01"的同学所学相同的同学的信息
+
+```mysql
+mysql> SELECT
+    -> s.* 
+    -> FROM
+    -> student s 
+    -> WHERE
+    -> s.s_no IN ( SELECT DISTINCT ( s_no ) FROM score WHERE c_no IN ( SELECT c_no FROM score WHERE s_no = '01' ) );
++------+--------+------------+-------+
+| s_no | s_name | s_birthday | s_sex |
++------+--------+------------+-------+
+| 01   | 赵雷   | 1990-01-01 | 男    |
+| 02   | 钱电   | 1990-12-21 | 男    |
+| 03   | 孙风   | 1990-05-20 | 男    |
+| 04   | 李云   | 1990-08-06 | 男    |
+| 05   | 周梅   | 1991-12-01 | 女    |
+| 06   | 吴兰   | 1992-03-01 | 女    |
+| 07   | 郑竹   | 1989-07-01 | 女    |
++------+--------+------------+-------+
+7 rows in set (0.00 sec)
+```
+
+- 13、查询和"01"号的同学学习的课程完全相同的其他同学的信息
+
+
+
+- 14、查询没学过"张三"老师讲授的任一门课程的学生姓名
+
+查询t_no，t_no唯一，查询c_no，c_no不唯一，因此用in，可能某学生选了这个老师教授的C1，C2，所以s_no要用Distinct。最后用NOT IN
+
+```mysql
+mysql> SELECT
+    -> s.s_name 
+    -> FROM
+    -> student s 
+    -> WHERE
+    -> s.s_no NOT IN ( SELECT DISTINCT ( s_no ) FROM score WHERE c_no IN ( SELECT c_no FROM course WHERE t_no = ( SELECT t_no FROM teacher WHERE t_name = '张三' ) ) );
++--------+
+| s_name |
++--------+
+| 吴兰   |
+| 王菊   |
++--------+
+2 rows in set (0.00 sec)
+```
+
+- 15、查询两门及其以上不及格课程的同学的学号，姓名及其平均成绩
+
+on > where > having 程度
+
+```mysql
+mysql> SELECT
+    -> s.s_no,
+    -> s.s_name,
+    -> AVG( sc.sc_degree ) 
+    -> FROM
+    -> student s
+    -> LEFT JOIN score sc ON s.s_no = sc.s_no 
+    -> WHERE
+    -> sc.s_no IN ( SELECT s_no FROM score WHERE sc_degree < 60 GROUP BY s_no HAVING COUNT( c_no ) > 1 ) 
+    -> GROUP BY
+    -> sc.s_no;
++------+--------+---------------------+
+| s_no | s_name | AVG( sc.sc_degree ) |
++------+--------+---------------------+
+| 04   | 李云   |             33.3333 |
+| 06   | 吴兰   |             32.5000 |
++------+--------+---------------------+
+2 rows in set (0.00 sec)
+```
+
+* 16、检索"01"课程分数小于60，按分数降序排列的学生信息
+
+```mysql
+mysql> SELECT
+    -> s.* 
+    -> FROM
+    -> student s 
+    -> WHERE
+    -> s_no IN ( SELECT s_no FROM score WHERE c_no = '01' AND sc_degree < 60 ORDER BY sc_degree DESC);
++------+--------+------------+-------+
+| s_no | s_name | s_birthday | s_sex |
++------+--------+------------+-------+
+| 04   | 李云   | 1990-08-06 | 男    |
+| 06   | 吴兰   | 1992-03-01 | 女    |
++------+--------+------------+-------+
+2 rows in set (0.01 sec)
+```
+
+```mysql
+select a.*,b.c_no,b.sc_degree from 
+	student a,score b 
+	where a.s_no = b.s_no and b.c_no='01' and b.sc_degree<60 ORDER BY b.sc_degree DESC;
+	
+```
+
+* 17、按平均成绩从高到低显示所有学生的所有课程的成绩以及平均成绩
+
+```mysql
+mysql> SELECT sc.s_no ,(SELECT sc_degree FROM score  WHERE s_no = sc.s_no AND c_no = '01') AS yuwen,
+    -> (SELECT sc_degree FROM score  WHERE s_no = sc.s_no AND c_no = '02') AS shuxue,
+    -> (SELECT sc_degree FROM score WHERE s_no = sc.s_no AND c_no = '03') as yingyu,
+    -> AVG(sc.sc_degree) AS avg_degree FROM score sc GROUP BY sc.s_no ORDER BY avg_degree DESC;
++------+-------+--------+--------+------------+
+| s_no | yuwen | shuxue | yingyu | avg_degree |
++------+-------+--------+--------+------------+
+| 07   |  NULL |     89 |     98 |    93.5000 |
+| 01   |    80 |     90 |     99 |    89.6667 |
+| 05   |    76 |     87 |   NULL |    81.5000 |
+| 03   |    80 |     80 |     80 |    80.0000 |
+| 02   |    70 |     60 |     80 |    70.0000 |
+| 04   |    50 |     30 |     20 |    33.3333 |
+| 06   |    31 |   NULL |     34 |    32.5000 |
++------+-------+--------+--------+------------+
+7 rows in set (0.01 sec)
+```
+
+* 18.查询各科成绩最高分、最低分和平均分：以如下形式显示：课程ID，课程name，最高分，最低分，平均分，及格率，中等率，优良率，优秀率--及格为>=60，中等为：70-80，优良为：80-90，优秀为：>=90
+
+* 19、按各科成绩进行排序，并显示排名
+* 20、查询学生的总成绩并进行排名
+

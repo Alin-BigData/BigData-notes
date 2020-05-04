@@ -1,8 +1,10 @@
 ## MySql体系结构和存储引擎
 
+[toc]
+
 ### MySQL 体系结构
 
-![image-20200429161823667](/Users/wangfulin/github/image/mysql/image-20200429161823667.png)
+![image-20200429161823667](../../image/mysql/image-20200429161823667.png)
 
 MySQL 体系结构由 Client Connectors 层、MySQL Server 层及存储引擎层组成。
 
@@ -46,7 +48,7 @@ MySQL 体系结构由 Client Connectors 层、MySQL Server 层及存储引擎层
 
 ### 一条select的执行过程
 
-<img src="/Users/wangfulin/github/image/mysql/image-20200429164042883.png" alt="image-20200429164042883" style="zoom:67%;" />
+<img src="../../image/mysql/image-20200429164042883.png" alt="image-20200429164042883" style="zoom:67%;" />
 
 ①通过客户端/服务器通信协议与 MySQL 建立连接。
 
@@ -64,7 +66,7 @@ MySQL 体系结构由 Client Connectors 层、MySQL Server 层及存储引擎层
 
 上半部分是实例层（计算层），位于内存中，下半部分是物理层，位于文件系统中。
 
-![image-20200429172556228](/Users/wangfulin/github/image/mysql/image-20200429172556228.png)
+![image-20200429172556228](../../image/mysql/image-20200429172556228.png)
 
 #### **实例层**
 
@@ -110,7 +112,7 @@ Master Thread 的优先级最高, 其内部包含几个循环：主循环（loop
 
 #### **内存和物理结构**
 
-<img src="/Users/wangfulin/github/image/mysql/image-20200429174319896.png" alt="image-20200429174319896" style="zoom: 50%;" />
+<img src="../../image/mysql/image-20200429174319896.png" alt="image-20200429174319896" style="zoom: 50%;" />
 
 **用户读取或者写入的最新数据都存储在 Buffer Pool 中**，如果 Buffer Pool 中没有找到则会读取物理文件进行查找，之后存储到 Buffer Pool 中并返回给 MySQL Server。**Buffer Pool 采用LRU 机制**，具体的内存队列和刷新机制。
 
@@ -140,7 +142,7 @@ MySQL 8.0 版本新特性如下：
 
 #### **功能对比**
 
-<img src="/Users/wangfulin/github/image/mysql/image-20200429175122620.png" alt="image-20200429175122620" style="zoom:50%;" />
+<img src="../../image/mysql/image-20200429175122620.png" alt="image-20200429175122620" style="zoom:50%;" />
 
 - InnoDB 支持 ACID 的事务 4 个特性，而 MyISAM 不支持；
 - InnoDB 支持 4 种事务隔离级别，默认是可重复读 Repeatable Read 的，MyISAM 不支持；
@@ -151,9 +153,9 @@ MySQL 8.0 版本新特性如下：
 
 InnoDB 表最大还可以支持 64TB，支持聚簇索引、支持压缩数据存储，支持数据加密，支持查询/索引/数据高速缓存，支持自适应hash索引、空间索引，支持热备份和恢复等，如下图所示。
 
-<img src="/Users/wangfulin/github/image/mysql/image-20200429175241993.png" alt="image-20200429175241993" style="zoom:67%;" />
+<img src="../../image/mysql/image-20200429175241993.png" alt="image-20200429175241993" style="zoom:67%;" />
 
-## 性能对比
+#### 性能对比
 
 在性能对比上，InnoDB 也完胜 MyISAM，如下图所示。
 
@@ -165,15 +167,15 @@ InnoDB 表最大还可以支持 64TB，支持聚簇索引、支持压缩数据�
 
 以上测试仅为说明 InnoDB 比 MyISAM 的处理能力强大，具体 TPS 测试数据跟硬件和测试条件不同而有很大差异。
 
-### **InnoDB 存储引擎**
+### **InnoDB 存储引擎特性**
 
 #### **核心特性**
 
 InnoDB 存储引擎的核心特性包括：MVCC、锁、锁算法和分类、事务、表空间和数据页、内存线程以及状态查询。其中锁和事务会在下一节课时讲解。本课时我们已经学习了 InnoDB 的表空间和实例等。
 
-![image-20200429175528963](/Users/wangfulin/github/image/mysql/image-20200429175528963.png)
+![image-20200429175528963](../../image/mysql/image-20200429175528963.png)
 
-### ARIES 三原则
+#### ARIES 三原则
 
 ARIES 三原则，是指 Write Ahead Logging（WAL）。
 
