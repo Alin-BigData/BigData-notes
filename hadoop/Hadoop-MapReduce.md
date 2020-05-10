@@ -1073,10 +1073,158 @@ protected OrderGroupingComparator() {
 
 ![image-20200509234721093](/Users/wangfulin/github/image/hadoop/image-20200509234721093.png)
 
-（1）Copy阶段：ReduceTask从各个MapTask上远程拷贝一片数据，并针对某一片数据，如果其大小超过一定阈值，则写到磁盘上，否则直接放到内存中。
+​	（1）Copy阶段：ReduceTask从各个MapTask上远程拷贝一片数据，并针对某一片数据，如果其大小超过一定阈值，则写到磁盘上，否则直接放到内存中。
 
 ​	（2）Merge阶段：在远程拷贝数据的同时，ReduceTask启动了两个后台线程对内存和磁盘上的文件进行合并，以防止内存使用过多或磁盘上文件过多。
 
 ​	（3）Sort阶段：按照MapReduce语义，用户编写reduce()函数输入数据是按key进行聚集的一组数据。为了将key相同的数据聚在一起，Hadoop采用了基于排序的策略。由于各个MapTask已经实现对自己的处理结果进行了局部排序，因此，ReduceTask只需对所有数据进行一次归并排序即可。
 
 ​	（4）Reduce阶段：reduce()函数将计算结果写到HDFS上。
+
+**设置ReduceTask并行度（个数）**
+
+ReduceTask的并行度同样影响整个Job的执行并发度和执行效率，但与MapTask的并发数由切片数决定不同，ReduceTask数量的决定是可以直接手动设置：
+
+```
+// 默认值是1，手动设置为4
+job.setNumReduceTasks(4);
+```
+
+![image-20200510160523939](/Users/wangfulin/github/image/hadoop/image-20200510160523939.png)
+
+### OutputFormat数据输出
+
+![image-20200510160614176](/Users/wangfulin/github/image/hadoop/image-20200510160614176.png)
+
+#### 自定义OutputFormat
+
+![image-20200510160652626](/Users/wangfulin/github/image/hadoop/image-20200510160652626.png)
+
+#### 自定义OutputFormat案例实操
+
+需求
+
+​	过滤输入的log日志，包含atguigu的网站输出到atguigu.log，不包含atguigu的网站输出到other.log
+
+- [ ] 插入代码链接
+
+### Join多种应用
+
+#### Reduce Join
+
+Map端的主要工作：为来自不同表或文件的key/value对，打标签以区别不同来源的记录。然后用连接字段作为key，其余部分和新加的标志作为value，最后进行输出。
+
+  Reduce端的主要工作：在Reduce端以连接字段作为key的分组已经完成，我们只需要在每一个分组当中将那些来源于不同文件的记录(在Map阶段已经打标志)分开，最后进行合并就ok了。
+
+#### Reduce Join案例实操
+
+<img src="/Users/wangfulin/github/image/hadoop/image-20200510165840132.png" alt="image-20200510165840132" style="zoom:50%;" />
+
+通过将关联条件作为Map输出的key，将两表满足Join条件的数据并携带数据所来源的文件信息，发往同一个ReduceTask，在Reduce中进行数据的串联
+
+```java
+public class TableReducer extends Reducer<Text, TableBean, TableBean, NullWritable> {
+    @Override
+    protected void reduce(Text key, Iterable<TableBean> values,
+                          Context context) throws IOException, InterruptedException {
+
+        // 存储所有订单集合
+        ArrayList<TableBean> orderBeans = new ArrayList<TableBean>();
+        // 存储产品信息
+        TableBean pdBean = new TableBean();
+
+        for (TableBean tableBean : values) {
+
+            if ("order".equals(tableBean.getFlag())) {// 订单表
+
+                TableBean tmpBean = new TableBean();
+
+                try {
+                    // 拷贝传递过来的每条订单数据到集合中
+                    BeanUtils.copyProperties(tmpBean, tableBean);
+
+                    orderBeans.add(tmpBean);
+
+                } catch (IllegalAccessException e) {
+                    e.printStackTrace();
+                } catch (InvocationTargetException e) {
+                    e.printStackTrace();
+                }
+            } else {
+                try {
+                    // 拷贝传递过来的产品表到内存中
+                    BeanUtils.copyProperties(pdBean, tableBean);
+                } catch (IllegalAccessException e) {
+                    e.printStackTrace();
+                } catch (InvocationTargetException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+        // 3 表的拼接
+        for (TableBean tableBean : orderBeans) {
+            tableBean.setPname(pdBean.getPname());
+            // 4 数据写出去
+            context.write(tableBean, NullWritable.get());
+        }
+    }
+}
+```
+
+- [ ] 添加代码链接
+
+缺点：这种方式中，合并的操作是在Reduce阶段完成，Reduce端的处理压力太大，Map节点的运算负载则很低，资源利用率不高，且在Reduce阶段极易产生数据倾斜。
+
+解决方案：Map端实现数据合并
+
+#### Map Join
+
+Map Join适用于一张表十分小、一张表很大的场景。
+
+**优点**
+
+思考：在Reduce端处理过多的表，非常容易产生数据倾斜。怎么办？
+
+在Map端缓存多张表，提前处理业务逻辑，这样增加Map端业务，减少Reduce端数据的压力，尽可能的减少数据倾斜。
+
+**具体办法：采用DistributedCache**
+
+​	（1）在Mapper的setup阶段，将文件读取到缓存集合中。
+
+​	（2）在驱动函数中加载缓存。
+
+// 缓存普通文件到Task运行节点。
+
+```java
+job.addCacheFile(new URI("file://e:/cache/pd.txt"));
+```
+
+![image-20200510191832384](/Users/wangfulin/github/image/hadoop/image-20200510191832384.png)
+
+### 计数器应用
+
+ Hadoop为每个作业维护若干内置计数器，以描述多项指标。例如，某些计数器记录已处理的字节数和记录数，使用户可监控已处理的输入数据量和已产生的输出数据量。
+
+![image-20200510194856141](/Users/wangfulin/github/image/hadoop/image-20200510194856141.png)
+
+#### 数据清洗（ETL）
+
+在运行核心业务MapReduce程序之前，往往要先对数据进行清洗，清理掉不符合用户要求的数据。清理的过程往往只需要运行Mapper程序，不需要运行Reduce程序。
+
+
+
+- [ ] 代码链接
+
+
+
+### MapReduce开发总结
+
+![image-20200510200542681](/Users/wangfulin/github/image/hadoop/image-20200510200542681.png)
+
+![image-20200510200555637](/Users/wangfulin/github/image/hadoop/image-20200510200555637.png)
+
+<img src="/Users/wangfulin/github/image/hadoop/image-20200510200613585.png" alt="image-20200510200613585" style="zoom:50%;" />
+
+![image-20200510200634775](/Users/wangfulin/github/image/hadoop/image-20200510200634775.png)
+
+![image-20200510200651111](/Users/wangfulin/github/image/hadoop/image-20200510200651111.png)
