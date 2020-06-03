@@ -50,8 +50,9 @@ export  JAVA_HOME=/home/hadoop/app/jdk1.7.0_51
 	    	<name>hadoop.tmp.dir</name>
 	    	<value>/home/hadoop/app/tmp</value>
 		</property>	
-	
-	
+
+
+​	
 
 hdfs-site.xml
 
@@ -490,7 +491,7 @@ DF:
 DS:
 	ds.map(line => line.itemid)  compile no
 
-![image-20200519132551718](/Users/wangfulin/Library/Application Support/typora-user-images/image-20200519132551718.png)
+![image-20200519132551718](../image/spark/image-20200519132551718.png)
 
 #### DataFrame
 
@@ -822,7 +823,7 @@ java.io.FileNotFoundException: file:/Users/wangfulin/.m2/repository/com/ggstar/i
 
 解决方案：需要把ipdatabase 下面ipDatabase.csv,ipRegion.xlsx 两个文件拷贝到resource文件夹下面
 
-![image-20200519194232607](/Users/wangfulin/github/spark/image-20200519194232607.png)
+![image-20200519194232607](../image/spark/image-20200519194232607.png)
 
 
 
@@ -916,7 +917,7 @@ primary key (day, cms_id)
 
 ### Spark SQL重点掌握
 
-![image-20200520105703831](/Users/wangfulin/Library/Application Support/typora-user-images/image-20200520105703831.png)
+![image-20200520105703831](../image/spark/image-20200520105703831.png)
 
 ```scala
 即席查询
@@ -979,4 +980,14 @@ TPC-DS
 spark-packages.org
 
 ```
+
+
+
+
+
+----
+
+代码：
+
+- [sparksql](../icoding/spark-examples/sparksql)
 

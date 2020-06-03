@@ -4,7 +4,7 @@
 
 ### Flume
 
-![image-20200520165136318](/Users/wangfulin/github/image/spark/image-20200520165136318.png)
+![image-20200520165136318](../image/spark/image-20200520165136318.png)
 
 #### Flume概述
 
@@ -16,7 +16,7 @@ aggregating(聚合), and moving(移动) large amounts of log data
 
 webserver(源端) => flume => hdfs(目的地)
 
-![image-20200520165325747](/Users/wangfulin/github/image/spark/image-20200520165325747.png)
+![image-20200520165325747](../image/spark/image-20200520165325747.png)
 
 Flume架构及核心组件
 
@@ -182,7 +182,7 @@ flume-ng agent \
 
 将A服务器的日志实时采集到B服务器上
 
-![image-20200520192919529](/Users/wangfulin/github/image/spark/image-20200520192919529.png)
+![image-20200520192919529](../image/spark/image-20200520192919529.png)
 
 机器A：exec source + memory channel + avro sink
 机器B：avro source + memory channel + logger sink
@@ -228,7 +228,7 @@ avro-memory-logger.sources.avro-source.channels = memory-channel
 avro-memory-logger.sinks.logger-sink.channel = memory-channel
 ```
 
-![image-20200520195117688](/Users/wangfulin/github/image/spark/image-20200520195117688.png)
+![image-20200520195117688](../image/spark/image-20200520195117688.png)
 
 ### 单结点单broke
 
@@ -342,7 +342,7 @@ kafka-topics.sh --describe --zookeeper localhost:2181 --topic my-replicated-topi
 
 ### 整合kafka-flume
 
-![image-20200521102728187](/Users/wangfulin/github/image/spark/image-20200521102728187.png)
+![image-20200521102728187](../image/spark/image-20200521102728187.png)
 
 整合Flume和Kafka的综合使用
 
@@ -397,7 +397,7 @@ sparkStreaming入门
 Spark Streaming接收到实时数据流，把数据按照指定的时间段切成一片片小的数据块，
 然后把小的数据块传给Spark Engine处理。
 
- ![image-20200521152444544](/Users/wangfulin/github/image/spark/image-20200521152444544.png)
+ ![image-20200521152444544](../image/spark/image-20200521152444544.png)
 
 
 
@@ -442,7 +442,7 @@ Each RDD in a DStream contains data from a certain interval
 对DStream操作算子，比如map/flatMap，其实底层会被翻译为对DStream中的每个RDD都做相同的操作；
 因为一个DStream是由不同批次的RDD所构成的。
 
-![image-20200521164416251](/Users/wangfulin/github/image/spark/image-20200521164416251.png)
+![image-20200521164416251](../image/spark/image-20200521164416251.png)
 
 #### Input DStreams and Receivers
 
@@ -476,7 +476,7 @@ Hence, when running locally, always use “local[*n*]” as the master URL, wher
     </dependency>
 ```
 
-<img src="/Users/wangfulin/github/image/spark/image-20200521180812028.png" alt="image-20200521180812028" style="zoom:50%;" />
+<img src="../image/spark/image-20200521180812028.png" alt="image-20200521180812028" style="zoom:50%;" />
 
 ```scala
 import org.apache.spark.SparkConf
@@ -807,7 +807,7 @@ val windowedWordCounts = pairs.reduceByKeyAndWindow((a:Int,b:Int) => (a + b), Se
 
 window：定时的进行一个时间段内的数据处理
 
-<img src="/Users/wangfulin/github/image/spark/image-20200522105708817.png" alt="image-20200522105708817" style="zoom:50%;" />
+<img src="../image/spark/image-20200522105708817.png" alt="image-20200522105708817" style="zoom:50%;" />
 
 - *window length* - The duration of the window (3 in the figure).
 - *sliding interval* - The interval at which the window operation is performed (2 in the figure).
@@ -1085,7 +1085,7 @@ The Receiver is implemented using the Kafka high-level consumer API. As with all
  
 ```
 
-<img src="/Users/wangfulin/github/image/spark/image-20200522170729932.png" alt="image-20200522170729932" style="zoom:50%;" />
+<img src="../image/spark/image-20200522170729932.png" alt="image-20200522170729932" style="zoom:50%;" />
 
 
 
@@ -1120,7 +1120,7 @@ object KafkaReceiverWordCount {
 
 上生产：
 
-![image-20200522172528775](/Users/wangfulin/github/image/spark/image-20200522172528775.png)
+![image-20200522172528775](../image/spark/image-20200522172528775.png)
 
 
 
@@ -1199,7 +1199,7 @@ object KafkaDirectWordCount {
 
 参数
 
-<img src="/Users/wangfulin/github/image/spark/image-20200522194753568.png" alt="image-20200522194753568" style="zoom:50%;" />
+<img src="../image/spark/image-20200522194753568.png" alt="image-20200522194753568" style="zoom:50%;" />
 
 遇到问题
 
@@ -1213,7 +1213,7 @@ pom文件的问题，版本要对应，再重新reimport一下，参考：https:
 
 整合flume + kafka + spark streaming
 
-![image-20200523095258830](/Users/wangfulin/github/image/spark/image-20200523095258830.png)
+![image-20200523095258830](../image/spark/image-20200523095258830.png)
 
 #### log4j到flume
 
@@ -1291,7 +1291,7 @@ public class LoggerGenerator {
 }
 ```
 
-![image-20200522211847844](/Users/wangfulin/github/image/spark/image-20200522211847844.png)
+![image-20200522211847844](../image/spark/image-20200522211847844.png)
 
 kafka创建topic
 
@@ -1341,7 +1341,7 @@ flume-ng agent \
 kafka-console-consumer.sh --zookeeper localhost:2181 --topic streamingtopic
 ```
 
-![image-20200522215730375](/Users/wangfulin/github/image/spark/image-20200522215730375.png)
+![image-20200522215730375](../image/spark/image-20200522215730375.png)
 
 Spark Streaming对接Kafka
 
@@ -1376,7 +1376,7 @@ object KafkaStreamingApp {
 
 ```
 
-![image-20200522215838926](/Users/wangfulin/github/image/spark/image-20200522215838926.png)
+![image-20200522215838926](../image/spark/image-20200522215838926.png)
 
 现在是在本地进行测试的，在IDEA中运行LoggerGenerator，
 然后使用Flume、Kafka以及Spark Streaming进行处理操作。
@@ -1659,4 +1659,16 @@ hbase设计
 ​	rowkey:20171111 +search+ 1
 
 清数据：truncate + '表名'
+
+
+
+
+
+
+
+----
+
+代码：
+
+- [sparkstreaming](../icoding/spark-examples/sparkstreaming)
 

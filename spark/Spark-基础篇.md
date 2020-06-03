@@ -18,23 +18,23 @@ reduceByKey(_+_)：按照key将值进行聚合，相加；
 collect：将数据收集到Driver端展示。
 ```
 
-![image-20200525181941524](/Users/wangfulin/github/image/spark/image-20200525181941524.png)
+![image-20200525181941524](../image/spark/image-20200525181941524.png)
 
-![image-20200526000357406](/Users/wangfulin/github/image/spark/image-20200526000357406.png)
-
-
+![image-20200526000357406](../image/spark/image-20200526000357406.png)
 
 
 
-![image-20200526000330985](/Users/wangfulin/github/image/spark/image-20200526000330985.png)
+
+
+![image-20200526000330985](../image/spark/image-20200526000330985.png)
 
 ## RDD
 
-![image-20200526134204696](/Users/wangfulin/github/image/spark/image-20200526134204696.png)
+![image-20200526134204696](../image/spark/image-20200526134204696.png)
 
 RDD将数据处理的逻辑进行封装
 
-![image-20200526134243720](/Users/wangfulin/github/image/spark/image-20200526134243720.png)
+![image-20200526134243720](../image/spark/image-20200526134243720.png)
 
 RDD（Resilient Distributed Dataset）叫做弹性分布式数据集，是Spark中最基本的数据抽象。代码中是一个抽象类，它代表一个不可变、可分区、里面的元素可并行计算的集合。
 
@@ -54,7 +54,7 @@ RDD（Resilient Distributed Dataset）叫做弹性分布式数据集，是Spark�
 
 5) 一个列表，存储存取每个Partition的优先位置（preferred location）。
 
-![image-20200602094139651](/Users/wangfulin/github/image/spark/image-20200602094139651.png)
+![image-20200602094139651](../image/spark/image-20200602094139651.png)
 
 输入可能以多个文件的形式存储在HDFS上，每个File都包含了很多块，称为Block。当Spark读取这些文件作为输入时，会根据具体数据格式对应的InputFormat进行解析，一般是**将若干个Block合并成一个输入分片，称为InputSplit**，**注意**InputSplit不能跨越文件。随后将为这些输入分片生成具体的Task。InputSplit与Task是一一对应的关系。随后这些具体的Task每个都会被分配到集群上的某个节点的某个Executor去执行。
 
@@ -138,7 +138,7 @@ RDD整体上分为Value类型和Key-Value类型。
 
 _*i的计算在Executor中，需要在网络中传输这个i，因此需要考虑序列化，否则不能传输过去。
 
-![image-20200527083153908](/Users/wangfulin/github/image/spark/image-20200527083153908.png)
+![image-20200527083153908](../image/spark/image-20200527083153908.png)
 
 
 
@@ -155,7 +155,7 @@ _*i的计算在Executor中，需要在网络中传输这个i，因此需要考�
     mapRdd.collect().foreach(println)
 ```
 
-![image-20200527073028004](/Users/wangfulin/github/image/spark/image-20200527073028004.png)
+![image-20200527073028004](../image/spark/image-20200527073028004.png)
 
 ```scala
     // 可以对一个RDD中的所有分区进行遍历
@@ -170,7 +170,7 @@ _*i的计算在Executor中，需要在网络中传输这个i，因此需要考�
     mapPartitionsRdd.collect().foreach(println)
 ```
 
-![image-20200527073045270](/Users/wangfulin/github/image/spark/image-20200527073045270.png)
+![image-20200527073045270](../image/spark/image-20200527073045270.png)
 
 ```scala
     // mapPartitionsWithIndex带分区号
@@ -187,7 +187,7 @@ _*i的计算在Executor中，需要在网络中传输这个i，因此需要考�
     tupleRDD1.collect().foreach(println)
 ```
 
-![image-20200527074827689](/Users/wangfulin/github/image/spark/image-20200527074827689.png)
+![image-20200527074827689](../image/spark/image-20200527074827689.png)
 
 分区和任务有关
 
@@ -280,7 +280,7 @@ _*i的计算在Executor中，需要在网络中传输这个i，因此需要考�
 
 ​		对源RDD进行去重后返回一个新的RDD。默认情况下，只有8个并行任务来操作，但是可以传入一个可选的numTasks参数改变它。
 
-![image-20200527101721687](/Users/wangfulin/github/image/spark/image-20200527101721687.png)
+![image-20200527101721687](../image/spark/image-20200527101721687.png)
 
 ```scala
     // distinct
@@ -417,7 +417,7 @@ wordPairsRDD.reduceByKey((x,y)=> x+y).collect().foreach(println)
 
 3. 开发指导：reduceByKey比groupByKey，建议使用。但是需要注意是否会影响业务逻辑。
 
-![image-20200527145127734](/Users/wangfulin/github/image/spark/image-20200527145127734.png)
+![image-20200527145127734](../image/spark/image-20200527145127734.png)
 
 ##### aggregateByKey案例
 
@@ -435,7 +435,7 @@ wordPairsRDD.reduceByKey((x,y)=> x+y).collect().foreach(println)
 
 需求：创建一个pairRDD，取出每个分区相同key对应值的最大值，然后相加
 
-![image-20200527154213260](/Users/wangfulin/github/image/spark/image-20200527154213260.png)
+![image-20200527154213260](../image/spark/image-20200527154213260.png)
 
 
 
@@ -464,7 +464,7 @@ aggregateByKeyRdd.foldByKey(0)(_+_).collect().foreach(println)
 
 （3）mergeCombiners: 由于每个分区都是独立处理的， 因此对于同一个键可以有多个累加器。如果有两个或者更多的分区都有对应同一个键的累加器， 就需要使用用户提供的 mergeCombiners() 方法将各个分区的结果进行合并。
 
-![image-20200530201616173](/Users/wangfulin/github/image/spark/image-20200530201616173.png)
+![image-20200530201616173](../image/spark/image-20200530201616173.png)
 
 ##### sortByKey([ascending], [numTasks]) 案例
 
@@ -510,7 +510,7 @@ input.cogroup(input2).collect().foreach(println)
 
 2. 需求：统计出每一个省份广告被点击次数的TOP3
 
-![image-20200530221905063](/Users/wangfulin/github/image/spark/image-20200530221905063.png)
+![image-20200530221905063](../image/spark/image-20200530221905063.png)
 
 #### Action
 
@@ -593,19 +593,19 @@ RDD和它依赖的父RDD（s）的关系有两种不同的类型，即窄依赖�
 
 窄依赖指的是每一个父RDD的Partition最多被子RDD的一个Partition使用,窄依赖我们形象的比喻为独生子女
 
-![image-20200531154250237](/Users/wangfulin/github/image/spark/image-20200531154250237.png)
+![image-20200531154250237](../image/spark/image-20200531154250237.png)
 
 #### 宽依赖
 
 宽依赖指的是多个子RDD的Partition会依赖同一个父RDD的Partition，会引起**shuffle**,总结：宽依赖我们形象的比喻为超生
 
-![image-20200531160115202](/Users/wangfulin/github/image/spark/image-20200531160115202.png)
+![image-20200531160115202](../image/spark/image-20200531160115202.png)
 
 #### DAG
 
 DAG(Directed Acyclic Graph)叫做有向无环图，原始的RDD通过一系列的转换就就形成了DAG，**根据RDD之间的依赖关系的不同将DAG划分成不同的Stage（阶段）**，对于窄依赖，partition的转换处理在Stage中完成计算。对于宽依赖，由于有Shuffle的存在，只能在parent RDD处理完成后，才能开始接下来的计算，**因此宽依赖是划分Stage的依据**。
 
-![image-20200531161256583](/Users/wangfulin/github/image/spark/image-20200531161256583.png)
+![image-20200531161256583](../image/spark/image-20200531161256583.png)
 
 #### 任务划分
 
@@ -617,7 +617,7 @@ RDD任务切分中间分为：Application、Job、Stage和Task
 
 3）Stage：根据RDD之间的依赖关系的不同将Job划分成不同的Stage，遇到一个宽依赖则划分一个Stage。
 
-![image-20200531164015217](/Users/wangfulin/github/image/spark/image-20200531164015217.png)
+![image-20200531164015217](../image/spark/image-20200531164015217.png)
 
 反向推，**到底有多少阶段 = 1 + shuffle个数，1是这个整体**
 
@@ -631,13 +631,13 @@ RDD通过persist方法或cache方法可以将前面的计算结果缓存，默�
 
 但是并不是这两个方法被调用时立即缓存，而是**触发后面的action时，该RDD将会被缓存在计算节点的内存中，并供后面重用。**
 
-![img](/Users/wangfulin/github/image/spark/wpsTVJ8he.png) 
+![img](../image/spark/wpsTVJ8he.png) 
 
 通过查看源码发现cache最终也是调用了persist方法，默认的存储级别都是仅在内存存储一份，Spark的存储级别还有好多种，存储级别在object StorageLevel中定义的。
 
-![img](/Users/wangfulin/github/image/spark/wpsic70jn.png) 
+![img](../image/spark/wpsic70jn.png) 
 
-在存储级别的末尾加上“_2”来把持久化数据存为两份![img](/Users/wangfulin/github/image/spark/wpslDlJmG.png)
+在存储级别的末尾加上“_2”来把持久化数据存为两份![img](../image/spark/wpslDlJmG.png)
 
 缓存有可能丢失，或者存储存储于内存的数据由于内存不足而被删除，RDD的缓存容错机制保证了即使缓存丢失也能保证计算的正确执行。通过基于RDD的一系列转换，丢失的数据会被重算，由于RDD的各个Partition是相对独立的，因此只需要计算丢失的部分即可，并不需要重算全部Partition。
 
@@ -740,11 +740,11 @@ RDD：分布式数据集
 
 累加器使用之前
 
-![image-20200602091812527](/Users/wangfulin/github/image/spark/image-20200602091812527.png)
+![image-20200602091812527](../image/spark/image-20200602091812527.png)
 
 使用累加器之后：
 
-<img src="/Users/wangfulin/github/image/spark/image-20200602091656089.png" alt="image-20200602091656089" style="zoom:67%;" />
+<img src="../image/spark/image-20200602091656089.png" alt="image-20200602091656089" style="zoom:67%;" />
 
 ##### 自定义累加器
 
@@ -822,5 +822,13 @@ sc.register(logAccumulator)
 
 ### SparkCore总结
 
-![Spark Core 总结](/Users/wangfulin/github/image/spark/Spark Core 总结.png)
+![Spark Core 总结](../image/spark/Spark Core 总结.png)
+
+
+
+----
+
+代码：
+
+- [sparkRdd](../icoding/spark-examples/sparkRdd)
 
