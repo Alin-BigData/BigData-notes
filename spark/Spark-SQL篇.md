@@ -1,5 +1,7 @@
 # Spark-SQL
 
+[toc]
+
 ### Hadoop环境搭建
 
 1) 下载Hadoop
@@ -382,9 +384,13 @@ java.net.ConnectException: Connection refused
 
 ### SQLContext&&HiveContext
 
+​		SparkSQL提供两种SQL查询起始点：一个叫SQLContext，用于Spark自己提供的SQL查询；一个叫HiveContext，用于连接Hive的查询。
+
+​		SparkSession是Spark最新的SQL查询起始点，实质上是SQLContext和HiveContext的组合，所以在SQLContext和HiveContext上可用的API在SparkSession上同样是可以使用的。SparkSession内部封装了sparkContext，所以计算实际上是由sparkContext完成的。
+
 #### SQLContext
 
-```
+```scala
 object SQLContextApp {
   def main(args: Array[String]): Unit = {
     val path = "/Users/wangfulin/bigdata/data/people.json"
@@ -412,7 +418,7 @@ object SQLContextApp {
 
 #### HiveContext
 
-```
+```scala
 object HiveContextApp {
   def main(args: Array[String]): Unit = {
 
@@ -434,52 +440,71 @@ object HiveContextApp {
 
 ```
 
+**注意**：临时表是Session范围内的，Session退出后，表就失效了。如果想应用范围内有效，可以使用全局表。注意使用全局表时需要全路径访问，如：global_temp.people
+
+```scala
+df.createGlobalTempView("people")
+// 从全局取数据global_temp
+spark.sql("SELECT * FROM global_temp.people").show()
+```
+
+#### DSL风格语法
+
+```scala
+df.printSchema // 查看结构
+df.select("name").show()//show
+// 引用要加$符号
+df.select($"name", $"age" + 1).show()//age+1
+df.filter($"age" > 21).show() //”age”大于”21”的数据
+df.groupBy("age").count().show() // 按照”age”分组，查看数据条数
+```
+
 
 
 ### DataFram&&DataSet
 
-DataFrame它不是Spark SQL提出的，而是早起在R、Pandas语言就已经有了的。
+​		Spark SQL是Spark用来处理结构化数据的一个模块，它提供了2个编程抽象：**DataFrame和DataSet**，并且作为分布式SQL查询引擎的作用。底层还是RDD。
+
+​		DataFrame它不是Spark SQL提出的，而是早起在R、Pandas语言就已经有了的。
 
 
-A Dataset is a distributed collection of data：分布式的数据集
+​		A Dataset is a distributed collection of data：分布式的数据集
 
-A DataFrame is a Dataset organized into named columns. 
+​		A DataFrame is a Dataset organized into named columns. 
 以列（列名、列的类型、列值）的形式构成的分布式数据集，按照列赋予不同的名称
 
+```
 student
 id:int
 name:string
 city:string
+```
 
 
 It is conceptually equivalent to a table in a relational database 
 or a data frame in R/Python
 
+- RDD： 
+  	java/scala  ==> jvm
+  	python ==> python runtime
 
-RDD： 
-	java/scala  ==> jvm
-	python ==> python runtime
+- DataFrame:
+  	java/scala/python ==> Logic Plan
 
-
-DataFrame:
-	java/scala/python ==> Logic Plan
-
-
-DataFrame和RDD互操作的两种方式：
+**DataFrame和RDD互操作的两种方式：**
 1）反射：case class   前提：事先需要知道你的字段、字段类型    
-2）编程：Row          如果第一种情况不能满足你的要求（事先不知道列）
+2）编程：Row 如果第一种情况不能满足你的要求（事先不知道列）
 3) 选型：优先考虑第一种
 
 
 
+```scala
 val rdd = spark.sparkContext.textFile("file:///home/hadoop/data/student.data")
-
-
+```
 
 DataFrame = Dataset[Row]
 Dataset：强类型  typed  case class
 DataFrame：弱类型   Row
-
 
 SQL: 
 	seletc name from person;  compile  ok, result no
@@ -494,6 +519,16 @@ DS:
 ![image-20200519132551718](../image/spark/image-20200519132551718.png)
 
 #### DataFrame
+
+​		DataFrame也是一个分布式数据容器。然而DataFrame更像传统数据库的二维表格，除了数据以外，还记录数据的结构信息，即schema。同时，与Hive类似，DataFrame也支持嵌套数据类型（struct、array和map）。从API易用性的角度上看，DataFrame API提供的是一套高层的关系操作，比函数式的RDD API要更加友好，门槛更低。
+
+![image-20200603154946241](../image/spark/image-20200603154946241.png)
+
+​		上图直观地体现了DataFrame和RDD的区别。左侧的RDD[Person]虽然以Person为类型参数，但**Spark框架本身不了解Person类的内部结构**。而右侧的DataFrame却提供了详细的结构信息，使得Spark SQL可以清楚地知道该数据集中包含哪些列，每列的名称和类型各是什么。**DataFrame是为数据提供了Schema的视图。**可以把它当做数据库中的一张表来对待，DataFrame也是懒执行的。性能上比RDD要高，主要原因：
+
+优化的执行计划：查询计划通过`Spark catalyst optimiser`进行优化。
+
+![image-20200603155509889](../image/spark/image-20200603155509889.png)
 
 ```scala
 // DataFrame API基本操作
@@ -524,7 +559,6 @@ object DataFrameApp {
 
     spark.stop()
   }
-
 }
 ```
 
@@ -585,7 +619,37 @@ object DataFrameCase {
 
 #### DataFrame和RDD的互操作
 
+注意：如果需要RDD与DF或者DS之间操作，那么都需要引入 import spark.implicits._  【spark不是包名，而是sparkSession对象的名称】
+
 有两种方式
+
+toDF
+
+```scala
+    val infoRDD = rdd.map(_.split(",")).map(line => Row(line(0).toInt, line(1), line(2).toInt))
+
+    val structType = StructType(Array(StructField("id", IntegerType, true),
+      StructField("name", StringType, true),
+      StructField("age", IntegerType, true)))
+
+    val infoDF = spark.createDataFrame(infoRDD, structType)
+    infoDF.printSchema()
+```
+
+或者使用`toDF(字段名称)`
+
+```scala
+// 手动创建
+peopleRDD.map{x=>val para = x.split(",");(para(0),para(1).trim.toInt)}.toDF("name","age")
+
+// 反射创建 创建样例类
+case class People(name:String, age:Int)
+peopleRDD.map{ x => val para = x.split(",");People(para(0),para(1).trim.toInt)}.toDF
+// 通过编程的方式（了解）
+
+```
+
+
 
 ```scala
 object DataFrameRDDApp {
@@ -609,7 +673,8 @@ object DataFrameRDDApp {
     val structType = StructType(Array(StructField("id", IntegerType, true),
       StructField("name", StringType, true),
       StructField("age", IntegerType, true)))
-
+		
+    //转换
     val infoDF = spark.createDataFrame(infoRDD, structType)
     infoDF.printSchema()
     infoDF.show()
@@ -646,9 +711,50 @@ object DataFrameRDDApp {
 }
 ```
 
+##### DateFrame转换为RDD
+
+只能一行一行做
+
+```scala
+val df = spark.read.json("/opt/module/spark/examples/src/main/resources/people.json")
+val dfToRDD = df.rdd
+dfToRDD.collect
+```
+
+
+
 #### Dataset
 
+只有属性 没有结构
+
+1）是Dataframe API的一个扩展，是Spark最新的数据抽象。
+
+2）用户友好的API风格，既具有类型安全检查也具有Dataframe的查询优化特性。
+
+3）Dataset支持编解码器，当需要访问非堆上的数据时可以避免反序列化整个对象，提高了效率。
+
+4）样例类被用来在Dataset中定义数据的结构信息，样例类中每个属性的名称直接映射到DataSet中的字段名称。
+
+5） Dataframe是Dataset的特列，DataFrame=Dataset[Row] ，所以可以通过as方法将Dataframe转换为Dataset。Row是一个类型，跟Car、Person这些的类型一样，所有的表结构信息我都用Row来表示。
+
+6）DataSet是强类型的。比如可以有Dataset[Car]，Dataset[Person].
+
+7）DataFrame只是知道字段，但是不知道字段的类型，所以在执行这些操作的时候是没办法在编译的时候检查是否类型失败的，比如你可以对一个String进行减法操作，在执行的时候才报错，而DataSet不仅仅知道字段，而且知道字段类型，所以有更严格的错误检查。就跟JSON对象和类对象之间的类比。
+
+
+
+Rdd添加结构就变成了DataFrame，DataFrame添加类和属性，就变成了DataSet
+
+```scala
+// 创建样例类
+case class Person(name: String, age: Long)
+// 创建DataSet
+val caseClassDS = Seq(Person("Andy", 32)).toDS()
 ```
+
+
+
+```scala
 object DatasetApp {
   def main(args: Array[String]): Unit = {
     val spark = SparkSession.builder().appName("DatasetApp")
@@ -674,9 +780,70 @@ object DatasetApp {
 }
 ```
 
+##### RDD转为DataSet
+
+RDD增加结构 -- 》 DataFrame 增加类型 --  》DataSet
+
+```scala
+// 创建样例类
+case class Person(name: String, age: Long)
+peopleRDD.map(line => {val para = line.split(",");Person(para(0),para(1).trim.toInt)}).toDS()
+```
+
+##### DataSet转换为RDD
+
+```scala
+DS.rdd
+```
+
+#### DataFrame与DataSet的互操作
+
+```scala
+// 创建样例类
+case class Person(name: String, age: Long)
+// df转为ds
+df.as[Person]
+
+ds.toDf
+```
+
+三者的关系
+
+<img src="../image/spark/Spark RDD DataFrame, DataSet.png" alt="Spark RDD DataFrame, DataSet" style="zoom:67%;" />
+
 ### 引入外部数据源
 
+#### 通用加载/保存方法
+
+​		Spark SQL的默认数据源为Parquet格式。数据源为Parquet文件时，Spark SQL可以方便的执行所有的操作。
+
+```scala
+val df = spark.read.load("examples/src/main/resources/users.parquet") df.select("name", "favorite_color").write.save("namesAndFavColors.parquet")
+```
+
+​		当数据源格式不是parquet格式文件时，需要手动指定数据源的格式。数据源格式需要指定全名（例如：org.apache.spark.sql.parquet），如果数据源格式为内置格式，则只需要指定简称定json, parquet, jdbc, orc, libsvm, csv, text来指定数据的格式。
+
+​		可以通过SparkSession提供的read.load方法用于通用加载数据，使用write和save保存数据。加一个format
+
+```scala
+val peopleDF = spark.read.format("json").load("examples/src/main/resources/people.json")
+peopleDF.write.format("parquet").save("hdfs://hadoop102:9000/namesAndAges.parquet")
+```
+
+​		可以采用SaveMode执行存储操作，SaveMode定义了对数据的处理模式。需要注意的是，这些保存模式不使用任何锁定，不是原子操作。此外，当使用Overwrite方式执行时，在输出新数据之前原数据就已经被删除。SaveMode详细介绍如下表：
+
+|           Scala/Java            |   Any Language   |       Meaning        |
+| :-----------------------------: | :--------------: | :------------------: |
+| SaveMode.ErrorIfExists(default) | "error"(default) | 如果文件存在，则报错 |
+|         SaveMode.Append         |     "append"     |         追加         |
+|       SaveMode.Overwrite        |   "overwrite"    |         覆写         |
+|         SaveMode.Ignore         |     "ignore"     |   数据存在，则忽略   |
+
+
+
 #### 处理parquet数据
+
+​		parquet是一种流行的列式存储格式，可以高效地存储具有嵌套字段的记录。Parquet格式经常在Hadoop生态圈中被使用，它也支持Spark SQL的全部数据类型。Spark SQL 提供了直接读取和存储 Parquet 格式文件的方法
 
 ```java
 object ParquetApp {
@@ -716,23 +883,31 @@ spark.sqlContext.setConf("spark.sql.shuffle.partitions","10")
 
 在生产环境中一定要注意设置spark.sql.shuffle.partitions，默认是200
 
+#### JSON文件
 
+​		Spark SQL 能够自动推测 JSON数据集的结构，并将它加载为一个Dataset[Row]. 可以通过SparkSession.read.json()去加载一个 一个JSON 文件。
+
+注意：这个JSON文件不是一个传统的JSON文件，每一行都得是一个JSON串。
 
 #### 操作MySQL的数据
 
+Spark SQL可以通过JDBC从关系型数据库中读取数据的方式创建DataFrame，通过对DataFrame一系列的计算后，还可以将数据再写回关系型数据库中。
+
+**注意:需要将相关的数据库驱动放到spark的类路径下。**
+
 方法一：
 
-```
+```scala
 spark.read.format("jdbc").option("url", "jdbc:mysql://localhost:3306/hive").option("dbtable", "hive.TBLS").option("user", "root").option("password", "root").option("driver", "com.mysql.jdbc.Driver").load()
 ```
 
 需要添加driver：
 
-java.sql.SQLException: No suitable driver
+java.sql.SQLException: No suitable driver 
 
 方法二：
 
-```
+```scala
 import java.util.Properties
 val connectionProperties = new Properties()
 connectionProperties.put("user", "root")
@@ -756,7 +931,26 @@ OPTIONS (
 )
 ```
 
-外部数据源综合案例
+将数据写入Mysql方式一
+
+```scala
+jdbcDF.write
+.format("jdbc")
+.option("url", "jdbc:mysql://hadoop102:3306/rdd")
+.option("dbtable", "dftable")
+.option("user", "root")
+.option("password", "000000")
+.save()
+```
+
+将数据写入Mysql方式二
+
+```scala
+jdbcDF2.write
+.jdbc("jdbc:mysql://hadoop102:3306/rdd", "db", connectionProperties)
+```
+
+外部数据源综合案例 -- hive + mysql
 
 ```mysql
 create database spark;
@@ -801,9 +995,140 @@ object HiveMySQLApp {
 }
 ```
 
+RDD=》DataFrame=》DataSet
+
+![image-20200603204141009](../image/spark/image-20200603204141009.png)
 
 
-### 日志分析实战
+
+RDD=》DataSet
+
+![image-20200603204843919](../image/spark/image-20200603204843919.png)
+
+
+
+### 用户自定义函数
+
+#### 用户自定义UDF函数
+
+```scala
+val df = spark.read.json("examples/src/main/resources/people.json")
+// udf user define function, 将函数注册到spark中
+// 函数名为addName
+// 输入的是一个字符串，返回的也是一个字符串，只是返回的是加了一个前缀
+spark.udf.register("addName", (x:String)=> "Name:"+x)
+// 将每一个查询的名称传到 函数名为addName
+df.createOrReplaceTempView("people")
+spark.sql("Select addName(name), age from people").show()
+
+
++-----------------+----+
+|UDF:addName(name)| age|
++-----------------+----+
+|     Name:Michael|null|
+|        Name:Andy|  30|
+|      Name:Justin|  19|
++-----------------+----+
+```
+
+#### 用户自定义聚合函数
+
+​		强类型的Dataset和弱类型的DataFrame都提供了相关的聚合函数， 如 count()，countDistinct()，avg()，max()，min()。除此之外，用户可以设定自己的自定义聚合函数。
+
+​		弱类型用户自定义聚合函数：通过继承UserDefinedAggregateFunction来实现用户自定义聚合函数。下面展示一个求平均工资的自定义聚合函数。	
+
+弱类型：
+
+```scala
+object MyAverage extends UserDefinedAggregateFunction {
+// 聚合函数输入参数的数据类型 
+def inputSchema: StructType = StructType(StructField("inputColumn", LongType) :: Nil)
+// 聚合缓冲区中值得数据类型 计算时的数据结构
+def bufferSchema: StructType = {
+StructType(StructField("sum", LongType) :: StructField("count", LongType) :: Nil)
+}
+// 返回值的数据类型 
+def dataType: DataType = DoubleType
+// 对于相同的输入是否一直返回相同的输出。
+def deterministic: Boolean = true
+// 初始化
+def initialize(buffer: MutableAggregationBuffer): Unit = {
+// 存工资的总额
+buffer(0) = 0L
+// 存工资的个数
+buffer(1) = 0L
+}
+// 相同Execute间的数据合并。 根据查询结果更新缓冲区数据
+def update(buffer: MutableAggregationBuffer, input: Row): Unit = {
+if (!input.isNullAt(0)) {
+  // sum
+buffer(0) = buffer.getLong(0) + input.getLong(0)
+  // count
+buffer(1) = buffer.getLong(1) + 1
+}
+}
+// 不同Execute间的数据合并  多个结点的缓冲区合并
+def merge(buffer1: MutableAggregationBuffer, buffer2: Row): Unit = {
+buffer1(0) = buffer1.getLong(0) + buffer2.getLong(0)
+buffer1(1) = buffer1.getLong(1) + buffer2.getLong(1)
+}
+// 计算最终结果
+def evaluate(buffer: Row): Double = buffer.getLong(0).toDouble / buffer.getLong(1)
+}
+
+```
+
+调用：
+
+![image-20200603212751778](../image/spark/image-20200603212751778.png)
+
+强类型：
+
+​		强类型用户自定义聚合函数：通过继承Aggregator来实现强类型自定义聚合函数，同样是求平均工资
+
+```scala
+// 既然是强类型，可能有case类
+case class Employee(name: String, salary: Long)
+// 缓冲区对象
+case class Average(var sum: Long, var count: Long)
+
+object MyAverage extends Aggregator[Employee, Average, Double] {
+// 定义一个数据结构，保存工资总数和工资总个数，初始都为0
+def zero: Average = Average(0L, 0L)
+	// Combine two values to produce a new value. For performance, the function may modify `buffer`
+	// and return it instead of constructing a new object
+  // 聚合数据
+def reduce(buffer: Average, employee: Employee): Average = {
+    buffer.sum += employee.salary
+    buffer.count += 1
+    buffer // 返回缓冲区
+}
+// 聚合不同execute的结果
+def merge(b1: Average, b2: Average): Average = {
+    b1.sum += b2.sum
+    b1.count += b2.count
+    b1
+}
+// 计算输出
+def finish(reduction: Average): Double = reduction.sum.toDouble / reduction.count
+// 设定之间值类型的编码器，要转换成case类
+// Encoders.product是进行scala元组和case类转换的编码器 
+def bufferEncoder: Encoder[Average] = Encoders.product
+// 设定最终输出值的编码器
+def outputEncoder: Encoder[Double] = Encoders.scalaDouble
+}
+
+```
+
+没办法用sql操作
+
+将聚合函数转换为查询列
+
+调用：
+
+![image-20200603214209141](../image/spark/image-20200603214209141.png)
+
+### 日志分析实战 
 
 数据源：[https://pan.baidu.com/s/19KRj1Td_aXff9WZ0Ps694g](https://pan.baidu.com/s/19KRj1Td_aXff9WZ0Ps694g)
 
@@ -980,8 +1305,6 @@ TPC-DS
 spark-packages.org
 
 ```
-
-
 
 
 

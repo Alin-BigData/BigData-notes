@@ -2,6 +2,83 @@
 
 [toc]
 
+### Spark Streaming是什么
+
+​		Spark Streaming用于流式数据的处理。Spark Streaming支持的数据输入源很多，例如：Kafka、Flume、Twitter、ZeroMQ和简单的TCP套接字等等。数据输入后可以用Spark的高度抽象原语如：map、reduce、join、window等进行运算。而结果也能保存在很多地方，如HDFS，数据库等
+
+​		Spark Streaming使用离散化流(discretized stream)作为抽象表示，叫作DStream。**DStream 是随时间推移而收到的数据的序列**。在内部，**每个时间区间收到的数据都作为 RDD 存在**，而DStream是由这些RDD所组成的序列(因此得名“离散化”)。
+
+![Spark Streaming](/Users/wangfulin/github/image/spark/Spark Streaming.png)
+
+### SparkStreaming架构
+
+![image-20200604160746920](/Users/wangfulin/github/image/spark/image-20200604160746920.png)
+
+
+
+### 自定义数据源
+
+​		需要继承Receiver，并实现onStart、onStop方法来自定义数据源采集。
+
+```scala
+class CustomerReceiver(host: String, port: Int) extends Receiver[String](StorageLevel.MEMORY_ONLY) {
+
+  //最初启动的时候，调用该方法，作用为：读数据并将数据发送给Spark
+  override def onStart(): Unit = {
+    new Thread("Socket Receiver") {
+      override def run() {
+        receive()
+      }
+    }.start()
+  }
+
+  //读数据并将数据发送给Spark
+  def receive(): Unit = {
+
+    //创建一个Socket
+    var socket: Socket = new Socket(host, port)
+
+    //定义一个变量，用来接收端口传过来的数据
+    var input: String = null
+
+    //创建一个BufferedReader用于读取端口传来的数据
+    val reader = new BufferedReader(new InputStreamReader(socket.getInputStream, StandardCharsets.UTF_8))
+
+    //读取数据
+    input = reader.readLine()
+
+    //当receiver没有关闭并且输入数据不为空，则循环发送数据给Spark
+    while (!isStopped() && input != null) {
+      store(input)
+      input = reader.readLine()
+    }
+
+    //跳出循环则关闭资源
+    reader.close()
+    socket.close()
+
+    //重启任务
+    restart("restart")
+  }
+
+  override def onStop(): Unit = {
+    if (socket != null) {
+      socket.close()
+      socket = null
+    }
+  }
+}
+```
+
+使用自定义的接收器：
+
+```scala
+//3.创建自定义receiver的Streaming
+val lineStream = ssc.receiverStream(new CustomerReceiver("hadoop102", 9999))
+```
+
+
+
 ### Flume
 
 ![image-20200520165136318](../image/spark/image-20200520165136318.png)
@@ -338,6 +415,55 @@ kafka-console-consumer.sh --zookeeper localhost:2181 --topic my-replicated-topic
 
 kafka-topics.sh --describe --zookeeper localhost:2181 --topic my-replicated-topic 
 
+### 从kafka中采集数据
+
+```scala
+object KafkaSparkStreaming {
+
+  def main(args: Array[String]): Unit = {
+
+    //1.创建SparkConf并初始化SSC
+    val sparkConf: SparkConf = new SparkConf().setMaster("local[*]").setAppName("KafkaSparkStreaming")
+    val ssc = new StreamingContext(sparkConf, Seconds(5))
+
+    //2.定义kafka参数
+    val brokers = "hadoop102:9092,hadoop103:9092,hadoop104:9092"
+    val topic = "source"
+    val consumerGroup = "spark"
+
+    //3.将kafka参数映射为map
+    val kafkaParam: Map[String, String] = Map[String, String](
+      ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG -> "org.apache.kafka.common.serialization.StringDeserializer",
+      ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG -> "org.apache.kafka.common.serialization.StringDeserializer",
+      ConsumerConfig.GROUP_ID_CONFIG -> consumerGroup,
+      ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG -> brokers
+    )
+
+    //4.通过KafkaUtil创建kafkaDSteam
+    val kafkaDSteam: ReceiverInputDStream[(String, String)] = KafkaUtils.createStream[String, String, StringDecoder, StringDecoder](
+      ssc,
+      kafkaParam,
+      Set(topic),
+      StorageLevel.MEMORY_ONLY
+    )
+
+    //5.对kafkaDSteam做计算（WordCount）
+    kafkaDSteam.foreachRDD {
+      rdd => {
+        val word: RDD[String] = rdd.flatMap(_._2.split(" "))
+        val wordAndOne: RDD[(String, Int)] = word.map((_, 1))
+        val wordAndCount: RDD[(String, Int)] = wordAndOne.reduceByKey(_ + _)
+        wordAndCount.collect().foreach(println)
+      }
+    }
+
+    //6.启动SparkStreaming
+    ssc.start()
+    ssc.awaitTermination()
+  }
+}
+```
+
 
 
 ### 整合kafka-flume
@@ -371,7 +497,7 @@ avro-memory-kafka.sinks.kafka-sink.channel = memory-channel
 
 
 
-```
+```shell
 先启动avro-memory-kafka
 flume-ng agent \
 --name avro-memory-kafka \
@@ -400,6 +526,110 @@ Spark Streaming接收到实时数据流，把数据按照指定的时间段切�
  ![image-20200521152444544](../image/spark/image-20200521152444544.png)
 
 
+
+### DStream转换
+
+​		DStream上的原语与RDD的类似，分为Transformations（转换）和Output Operations（输出）两种，此外转换操作中还有一些比较特殊的原语，如：updateStateByKey()、transform()以及各种Window相关的原语。
+
+#### 无状态转化操作
+
+​		无状态转化操作就是把简单的RDD转化操作应用到每个批次上，也就是转化DStream中的每一个RDD。部分无状态转化操作列在了下表中。注意，针对键值对的DStream转化操作(比如 reduceByKey())要添加import StreamingContext._才能在Scala中使用。
+
+![image-20200604195553683](/Users/wangfulin/github/image/spark/image-20200604195553683.png)
+
+​		需要记住的是，尽管这些函数看起来像作用在整个流上一样，但事实上每个DStream在内部是由许多RDD(批次)组成，且无状态转化操作是分别应用到每个RDD上的。例如，reduceByKey()会归约每个时间区间中的数据，但不会归约不同区间之间的数据。 
+
+​		举个例子，在之前的wordcount程序中，我们**只会统计5秒内接收到**的数据的单词个数，而不会累加。
+
+​		无状态转化操作也能在多个DStream间整合数据，不过也是在各个时间区间内。例如，键-值对DStream拥有和RDD一样的与连接相关的转化操作，也就是cogroup()、join()、leftOuterJoin() 等。我们可以在DStream上使用这些操作，这样就对每个批次分别执行了对应的RDD操作。
+
+我们还可以像在常规的Spark 中一样使用 DStream的union() 操作将它和另一个DStream 的内容合并起来，也可以使用StreamingContext.union()来合并多个流
+
+#### 有状态转化操作
+
+​		UpdateStateByKey原语用于记录历史记录，有时，我们需要在 DStream 中**跨批次维护状态**(例如流计算中累加wordcount)。针对这种情况，updateStateByKey() 为我们提供了对一个状态变量的访问，用于键值对形式的 DStream。给定一个由(键，事件)对构成的 DStream，并传递一个指定如何根据新的事件 更新每个键对应状态的函数，它可以构建出一个新的 DStream，其内部数据为(键，状态) 对。 
+
+​		**updateStateByKey() 的结果会是一个新的 DStream，其内部的 RDD 序列是由每个时间区间对应的(键，状态)对组成的。**
+
+​		updateStateByKey操作使得我们可以在用新信息进行更新时保持任意的状态。为使用这个功能，你需要做下面两步： 
+
+1. 定义状态，状态可以是一个任意的数据类型。 
+2. 定义状态更新函数，用此函数阐明如何使用之前的状态和来自输入流的新值对状态进行更新。
+
+
+
+重点：
+
+ **使用updateStateByKey需要对检查点目录进行配置，会使用检查点来保存状态**。
+
+![image-20200604205939917](/Users/wangfulin/Library/Application Support/typora-user-images/image-20200604205939917.png)
+
+### Window Operations
+
+​		Window Operations可以设置窗口的大小和滑动窗口的间隔来动态的获取当前Steaming的允许状态。基于窗口的操作会在一个比 StreamingContext 的批次间隔更长的时间范围内，通过整合多个批次的结果，计算出整个窗口的结果。
+
+![image-20200604211336201](/Users/wangfulin/github/image/spark/image-20200604211336201.png)
+
+​		**注意：所有基于窗口的操作都需要两个参数，分别为窗口时长以及滑动步长，两者都必须是 StreamContext 的批次间隔的整数倍。**
+
+![image-20200604212105942](/Users/wangfulin/github/image/spark/image-20200604212105942.png)
+
+窗口时长控制每次计算最近的多少个批次的数据，其实就是最近的 windowDuration/batchInterval 个批次。如果有一个以 10 秒为批次间隔的源 DStream，要创建一个最近 30 秒的时间窗口(即最近 3 个批次)，就应当把 windowDuration 设为 30 秒。而滑动步长的默认值与批次间隔相等，用来控制对新的 DStream 进行计算的间隔。如果源 DStream 批次间隔为 10 秒，并且我们只希望每两个批次计算一次窗口结果， 就应该把滑动步长设置为 20 秒。 
+
+假设，你想拓展前例从而每隔十秒对持续30秒的数据生成word count。为做到这个，我们需要在持续30秒数据的(word,1)对DStream上应用reduceByKey。使用操作reduceByKeyAndWindow.
+
+```
+# reduce last 30 seconds of data, every 10 second
+
+windowedWordCounts = pairs.reduceByKeyAndWindow(lambda x, y: x + y, lambda x, y: x -y, 30, 20)
+```
+
+<img src="/Users/wangfulin/github/image/spark/image-20200604212733457.png" alt="image-20200604212733457" style="zoom:50%;" />
+
+（1）window(windowLength, slideInterval): 基于对源DStream窗化的批次进行计算返回一个新的Dstream
+
+（2）countByWindow(windowLength, slideInterval)：返回一个滑动窗口计数流中的元素。
+
+（3）reduceByWindow(func, windowLength, slideInterval)：通过使用自定义函数整合滑动区间流元素来创建一个新的单元素流。
+
+（4）reduceByKeyAndWindow(func, windowLength, slideInterval, [numTasks])：当在一个(K,V)对的DStream上调用此函数，会返回一个新(K,V)对的DStream，此处通过对滑动窗口中批次数据使用reduce函数来整合每个key的value值。Note:默认情况下，这个操作使用Spark的默认数量并行任务(本地是2)，在集群模式中依据配置属性(spark.default.parallelism)来做grouping。你可以通过设置可选参数numTasks来设置不同数量的tasks。
+
+（5）reduceByKeyAndWindow(func, invFunc, windowLength, slideInterval, [numTasks])：这个函数是上述函数的更高效版本，每个窗口的reduce值都是通过用前一个窗的reduce值来递增计算。通过reduce进入到滑动窗口数据并”反向reduce”离开窗口的旧数据来实现这个操作。一个例子是随着窗口滑动对keys的“加”“减”计数。通过前边介绍可以想到，这个函数只适用于”可逆的reduce函数”，也就是这些reduce函数有相应的”反reduce”函数(以参数invFunc形式传入)。如前述函数，reduce任务的数量通过可选参数来配置。注意：为了使用这个操作，[检查点](#checkpointing)必须可用。 
+
+（6）countByValueAndWindow(windowLength,slideInterval, [numTasks])：对(K,V)对的DStream调用，返回(K,Long)对的新DStream，其中每个key的值是其在滑动窗口中频率。如上，可配置reduce任务数量。
+
+reduceByWindow() 和 reduceByKeyAndWindow() 让我们可以对每个窗口更高效地进行归约操作。它们接收一个归约函数，在整个窗口上执行，比如 +。除此以外，它们还有一种特殊形式，通过只考虑新进入窗口的数据和离开窗口的数据，让 Spark 增量计算归约结果。这种特殊形式需要提供归约函数的一个逆函数，比 如 + 对应的逆函数为 -。对于较大的窗口，提供逆函数可以大大提高执行效率 
+
+### Transform
+
+​		Transform原语允许DStream上执行任意的RDD-to-RDD函数。即使这些函数并没有在DStream的API中暴露出来，通过该函数可以方便的扩展Spark API。该函数每一批次调度一次。其实也就是对DStream中的RDD应用转换
+
+<img src="/Users/wangfulin/github/image/spark/image-20200604214809875.png" alt="image-20200604214809875" style="zoom:67%;" />
+
+### DStream输出
+
+（1）print()：在运行流程序的驱动结点上打印DStream中每一批次数据的最开始10个元素。这用于开发和调试。在Python API中，同样的操作叫print()。
+
+（2）saveAsTextFiles(prefix, [suffix])：以text文件形式存储这个DStream的内容。每一批次的存储文件名基于参数中的prefix和suffix。”prefix-Time_IN_MS[.suffix]”. 
+
+（3）saveAsObjectFiles(prefix, [suffix])：以Java对象序列化的方式将Stream中的数据保存为 SequenceFiles . 每一批次的存储文件名基于参数中的为"prefix-TIME_IN_MS[.suffix]". Python中目前不可用。
+
+（4）saveAsHadoopFiles(prefix, [suffix])：将Stream中的数据保存为 Hadoop files. 每一批次的存储文件名基于参数中的为"prefix-TIME_IN_MS[.suffix]"。
+Python API Python中目前不可用。
+
+（5）foreachRDD(func)：**这是最通用的输出操作**，即将函数 func 用于产生于 stream的每一个RDD。其中参数传入的函数func应该实现将每一个RDD中数据推送到外部系统，如将RDD存入文件或者通过网络将其写入数据库。注意：函数func在运行流应用的驱动中被执行，同时其中一般函数RDD操作从而强制其对于流RDD的运算。（把每个RDD做遍历）
+
+通用的输出操作foreachRDD()，它用来对DStream中的RDD运行任意计算。这和transform() 有些类似，都可以让我们访问任意RDD。在foreachRDD()中，可以重用我们在Spark中实现的所有行动操作。
+
+
+
+**比如，常见的用例之一是把数据写到诸如MySQL的外部数据库中。 注意**：
+
+（1）连接不能写在driver层面；（因为无法序列化）
+
+（2）如果写在foreach则每个RDD都创建，得不偿失；
+
+（3）增加foreachPartition，在分区创建。
 
 ## 实战
 
