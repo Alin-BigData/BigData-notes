@@ -8,11 +8,11 @@
 
 ​		Spark Streaming使用离散化流(discretized stream)作为抽象表示，叫作DStream。**DStream 是随时间推移而收到的数据的序列**。在内部，**每个时间区间收到的数据都作为 RDD 存在**，而DStream是由这些RDD所组成的序列(因此得名“离散化”)。
 
-![Spark Streaming](/Users/wangfulin/github/image/spark/Spark Streaming.png)
+![Spark Streaming](../image/spark/Spark Streaming.png)
 
 ### SparkStreaming架构
 
-![image-20200604160746920](/Users/wangfulin/github/image/spark/image-20200604160746920.png)
+<img src="../image/spark/image-20200604160746920.png" alt="image-20200604160746920" style="zoom:50%;" />
 
 
 
@@ -129,8 +129,16 @@ source下让其配置生效
 下载
 解压到~/app
 将java配置系统环境变量中: ~/.bash_profile
+
+```shell
 export FLUME_HOME=/home/hadoop/app/apache-flume-1.6.0-cdh5.7.0-bin
 export PATH=$FLUME_HOME/bin:$PATH
+```
+
+source下让其配置生效
+**flume-env.sh的配置JAVA_HOME：export JAVA_HOME=/home/hadoop/app/jdk1.8.0_144**
+**检测是否安装成功，在bin里面: flume-ng version**
+
 source下让其配置生效
 **flume-env.sh的配置JAVA_HOME：export JAVA_HOME=/home/hadoop/app/jdk1.8.0_144**
 **检测是否安装成功，在bin里面: flume-ng version**
@@ -275,7 +283,7 @@ exec-memory-avro.sources.exec-source.type = exec
 exec-memory-avro.sources.exec-source.command = tail -F /Users/wangfulin/bigdata/data/test.log
 exec-memory-avro.sources.exec-source.shell = /bin/sh -c
 
-## sink改了
+## sink改了 这里sink的目的地就是下一台机子的source
 exec-memory-avro.sinks.avro-sink.type = avro
 exec-memory-avro.sinks.avro-sink.hostname = localhost
 exec-memory-avro.sinks.avro-sink.port = 44444
@@ -343,11 +351,15 @@ kafka-topics.sh --list --zookeeper localhost:2181
 
 #### 发送消息:指定 broker地址
 
+重点：发送消息是生产者发送，
+
 ```
 kafka-console-producer.sh --broker-list localhost:9092 --topic hello_topic
 ```
 
 #### 消费消息: 指定zk地址
+
+重点
 
 ```
 kafka-console-consumer.sh --zookeeper localhost:2181 --topic hello_topic --from-beginning
@@ -409,7 +421,9 @@ kafka-console-producer.sh --broker-list  localhost:9093,localhost:9094,localhost
 
 消费者
 
+```
 kafka-console-consumer.sh --zookeeper localhost:2181 --topic my-replicated-topic
+```
 
 查看指定topic
 
@@ -516,14 +530,14 @@ flume-ng agent \
 
 
 
-sparkStreaming入门
+### sparkStreaming数据流程
 
 工作原理：粗粒度
 
-Spark Streaming接收到实时数据流，把数据按照指定的时间段切成一片片小的数据块，
+Spark Streaming接收到实时数据流，把数据按照指定的**时间段**切成一片片小的数据块，
 然后把小的数据块传给Spark Engine处理。
 
- ![image-20200521152444544](../image/spark/image-20200521152444544.png)
+ <img src="../image/spark/image-20200521152444544.png" alt="image-20200521152444544" style="zoom: 67%;" />
 
 
 
@@ -535,19 +549,19 @@ Spark Streaming接收到实时数据流，把数据按照指定的时间段切�
 
 ​		无状态转化操作就是把简单的RDD转化操作应用到每个批次上，也就是转化DStream中的每一个RDD。部分无状态转化操作列在了下表中。注意，针对键值对的DStream转化操作(比如 reduceByKey())要添加import StreamingContext._才能在Scala中使用。
 
-![image-20200604195553683](/Users/wangfulin/github/image/spark/image-20200604195553683.png)
+<img src="../image/spark/image-20200604195553683.png" alt="image-20200604195553683" style="zoom: 67%;" />
 
-​		需要记住的是，尽管这些函数看起来像作用在整个流上一样，但事实上每个DStream在内部是由许多RDD(批次)组成，且无状态转化操作是分别应用到每个RDD上的。例如，reduceByKey()会归约每个时间区间中的数据，但不会归约不同区间之间的数据。 
+​		需要记住的是，尽管这些函数看起来像作用在整个流上一样，但事实上每个DStream在内部是**由许多RDD(批次)组成**，且无状态转化操作是分别应用到每个RDD上的。例如，reduceByKey()会归约每个时间区间中的数据，但不会归约不同区间之间的数据。 
 
-​		举个例子，在之前的wordcount程序中，我们**只会统计5秒内接收到**的数据的单词个数，而不会累加。
+​		举个例子，在之前的wordcount程序中，**只会统计5秒内接收到**的数据的单词个数，而不会累加。
 
 ​		无状态转化操作也能在多个DStream间整合数据，不过也是在各个时间区间内。例如，键-值对DStream拥有和RDD一样的与连接相关的转化操作，也就是cogroup()、join()、leftOuterJoin() 等。我们可以在DStream上使用这些操作，这样就对每个批次分别执行了对应的RDD操作。
 
-我们还可以像在常规的Spark 中一样使用 DStream的union() 操作将它和另一个DStream 的内容合并起来，也可以使用StreamingContext.union()来合并多个流
+​		还可以像在常规的Spark 中一样使用 DStream的union() 操作将它和另一个DStream 的内容合并起来，也可以使用StreamingContext.union()来合并多个流
 
 #### 有状态转化操作
 
-​		UpdateStateByKey原语用于记录历史记录，有时，我们需要在 DStream 中**跨批次维护状态**(例如流计算中累加wordcount)。针对这种情况，updateStateByKey() 为我们提供了对一个状态变量的访问，用于键值对形式的 DStream。给定一个由(键，事件)对构成的 DStream，并传递一个指定如何根据新的事件 更新每个键对应状态的函数，它可以构建出一个新的 DStream，其内部数据为(键，状态) 对。 
+​		UpdateStateByKey用于记录历史记录，有时，我们需要在 DStream 中**跨批次维护状态**(例如流计算中累加wordcount)。针对这种情况，updateStateByKey() 为我们提供了对一个状态变量的访问，用于键值对形式的 DStream。给定一个由(键，事件)对构成的 DStream，并传递一个指定如何根据新的事件 更新每个键对应状态的函数，它可以构建出一个新的 DStream，其内部数据为(键，状态) 对。 
 
 ​		**updateStateByKey() 的结果会是一个新的 DStream，其内部的 RDD 序列是由每个时间区间对应的(键，状态)对组成的。**
 
@@ -558,7 +572,7 @@ Spark Streaming接收到实时数据流，把数据按照指定的时间段切�
 
 
 
-重点：
+**重点：**
 
  **使用updateStateByKey需要对检查点目录进行配置，会使用检查点来保存状态**。
 
@@ -566,17 +580,17 @@ Spark Streaming接收到实时数据流，把数据按照指定的时间段切�
 
 ### Window Operations
 
-​		Window Operations可以设置窗口的大小和滑动窗口的间隔来动态的获取当前Steaming的允许状态。基于窗口的操作会在一个比 StreamingContext 的批次间隔更长的时间范围内，通过整合多个批次的结果，计算出整个窗口的结果。
+​		Window Operations可以**设置窗口的大小和滑动窗口的间隔来动态的获取当前Steaming的允许状态**。基于窗口的操作会在一个比 StreamingContext 的批次间隔更长的时间范围内，通过整合多个批次的结果，计算出整个窗口的结果。
 
-![image-20200604211336201](/Users/wangfulin/github/image/spark/image-20200604211336201.png)
+<img src="../image/spark/image-20200604211336201.png" alt="image-20200604211336201" style="zoom: 67%;" />
 
 ​		**注意：所有基于窗口的操作都需要两个参数，分别为窗口时长以及滑动步长，两者都必须是 StreamContext 的批次间隔的整数倍。**
 
-![image-20200604212105942](/Users/wangfulin/github/image/spark/image-20200604212105942.png)
+<img src="../image/spark/image-20200604212105942.png" alt="image-20200604212105942" style="zoom: 50%;" />
 
-窗口时长控制每次计算最近的多少个批次的数据，其实就是最近的 windowDuration/batchInterval 个批次。如果有一个以 10 秒为批次间隔的源 DStream，要创建一个最近 30 秒的时间窗口(即最近 3 个批次)，就应当把 windowDuration 设为 30 秒。而滑动步长的默认值与批次间隔相等，用来控制对新的 DStream 进行计算的间隔。如果源 DStream 批次间隔为 10 秒，并且我们只希望每两个批次计算一次窗口结果， 就应该把滑动步长设置为 20 秒。 
+​		窗口时长控制每次计算最近的多少个批次的数据，其实就是最近的 windowDuration/batchInterval 个批次。如果有一个以 10 秒为批次间隔的源 DStream，要创建一个最近 30 秒的时间窗口(即最近 3 个批次)，就应当把 windowDuration 设为 30 秒。而滑动步长的默认值与批次间隔相等，用来控制对新的 DStream 进行计算的间隔。如果源 DStream 批次间隔为 10 秒，并且我们只希望每两个批次计算一次窗口结果， 就应该把滑动步长设置为 20 秒。 
 
-假设，你想拓展前例从而每隔十秒对持续30秒的数据生成word count。为做到这个，我们需要在持续30秒数据的(word,1)对DStream上应用reduceByKey。使用操作reduceByKeyAndWindow.
+​		假设，你想拓展前例从而每隔十秒对持续30秒的数据生成word count。为做到这个，我们需要在持续30秒数据的(word,1)对DStream上应用reduceByKey。使用操作reduceByKeyAndWindow.
 
 ```
 # reduce last 30 seconds of data, every 10 second
@@ -584,7 +598,7 @@ Spark Streaming接收到实时数据流，把数据按照指定的时间段切�
 windowedWordCounts = pairs.reduceByKeyAndWindow(lambda x, y: x + y, lambda x, y: x -y, 30, 20)
 ```
 
-<img src="/Users/wangfulin/github/image/spark/image-20200604212733457.png" alt="image-20200604212733457" style="zoom:50%;" />
+<img src="../image/spark/image-20200604212733457.png" alt="image-20200604212733457" style="zoom:50%;" />
 
 （1）window(windowLength, slideInterval): 基于对源DStream窗化的批次进行计算返回一个新的Dstream
 
@@ -602,15 +616,15 @@ reduceByWindow() 和 reduceByKeyAndWindow() 让我们可以对每个窗口更高
 
 ### Transform
 
-​		Transform原语允许DStream上执行任意的RDD-to-RDD函数。即使这些函数并没有在DStream的API中暴露出来，通过该函数可以方便的扩展Spark API。该函数每一批次调度一次。其实也就是对DStream中的RDD应用转换
+​		Transform允许DStream上执行任意的RDD-to-RDD函数。即使这些函数并没有在DStream的API中暴露出来，通过该函数可以方便的扩展Spark API。该函数每一批次调度一次。其实也就是对DStream中的RDD应用转换
 
-<img src="/Users/wangfulin/github/image/spark/image-20200604214809875.png" alt="image-20200604214809875" style="zoom:67%;" />
+<img src="../image/spark/image-20200604214809875.png" alt="image-20200604214809875" style="zoom:67%;" />
 
 ### DStream输出
 
 （1）print()：在运行流程序的驱动结点上打印DStream中每一批次数据的最开始10个元素。这用于开发和调试。在Python API中，同样的操作叫print()。
 
-（2）saveAsTextFiles(prefix, [suffix])：以text文件形式存储这个DStream的内容。每一批次的存储文件名基于参数中的prefix和suffix。”prefix-Time_IN_MS[.suffix]”. 
+（2）saveAsTextFiles(prefix, [suffix])：以text文件形式存储这个DStream的内容。**每一批次的存储文件名基于参数中的prefix和suffix**。”prefix-Time_IN_MS[.suffix]”. 
 
 （3）saveAsObjectFiles(prefix, [suffix])：以Java对象序列化的方式将Stream中的数据保存为 SequenceFiles . 每一批次的存储文件名基于参数中的为"prefix-TIME_IN_MS[.suffix]". Python中目前不可用。
 
@@ -619,7 +633,7 @@ Python API Python中目前不可用。
 
 （5）foreachRDD(func)：**这是最通用的输出操作**，即将函数 func 用于产生于 stream的每一个RDD。其中参数传入的函数func应该实现将每一个RDD中数据推送到外部系统，如将RDD存入文件或者通过网络将其写入数据库。注意：函数func在运行流应用的驱动中被执行，同时其中一般函数RDD操作从而强制其对于流RDD的运算。（把每个RDD做遍历）
 
-通用的输出操作foreachRDD()，它用来对DStream中的RDD运行任意计算。这和transform() 有些类似，都可以让我们访问任意RDD。在foreachRDD()中，可以重用我们在Spark中实现的所有行动操作。
+​		通用的输出操作foreachRDD()，它用来对DStream中的RDD运行任意计算。这和transform() 有些类似，都可以让我们访问任意RDD。在foreachRDD()中，可以重用我们在Spark中实现的所有行动操作。
 
 
 
@@ -660,14 +674,22 @@ batch interval可以根据你的应用程序需求的延迟要求以及集群可
 - stop() on StreamingContext also stops the SparkContext. To stop only the StreamingContext, set the optional parameter of `stop()` called `stopSparkContext` to false.
 - A SparkContext can be re-used to create multiple StreamingContexts, as long as the previous StreamingContext is stopped (without stopping the SparkContext) before the next StreamingContext is created.
 
+- 一旦上下文已启动，就无法设置新的流计算或将其添加到其中。
 
+- 上下文停止后，将无法重新启动。
+
+- JVM中只能同时激活一个StreamingContext。
+
+- StreamingContext上的stop（）也会停止SparkContext。要仅停止StreamingContext，请将名为stopSparkContext的stop（）的可选参数设置为false。
+
+- 只要在创建下一个StreamingContext之前停止了上一个StreamingContext（不停止SparkContext），就可以重新使用SparkContext创建多个StreamingContext。
 
 #### DStreams
 
 Internally, a DStream is represented by a continuous series of RDDs
 Each RDD in a DStream contains data from a certain interval
 
-
+在内部，DStream由一系列连续的RDD表示DStream中的每个RDD都包含特定间隔的数据
 
 对DStream操作算子，比如map/flatMap，其实底层会被翻译为对DStream中的每个RDD都做相同的操作；
 因为一个DStream是由不同批次的RDD所构成的。
@@ -761,7 +783,7 @@ object FileWordCount {
 
 #### updateStateByKey算子
 
-带状态的算子
+带状态的算子，**必须设置checkpoint**
 
 需求：统计到目前为止累积出现的单词的个数(需要保持住以前的状态)
 
@@ -870,6 +892,7 @@ object ForeachRDDApp {
 
     result.foreachRDD(rdd => {
       rdd.foreachPartition(partitionOfRecords => {
+        // 在每个Partition里面做连接
         val connection = createConnection()
         partitionOfRecords.foreach(record => {
           val sql = "insert into wordcount(word, wordcount) values('" + record._1 + "'," + record._2 + ")"
@@ -894,7 +917,7 @@ object ForeachRDDApp {
 }
 ```
 
-　　报错分析：
+报错分析：
 
 1、connection.createStatement().execute(sql)//没有驱动包，自己引入
 
@@ -904,7 +927,7 @@ object ForeachRDDApp {
 
 4、改成连接池的方式
 
-改进版，用set存储key
+改进版，用set存储key，不存在set中，
 
 ```scala
 object ForeachRDDAppPro {
@@ -929,6 +952,7 @@ object ForeachRDDAppPro {
 
         partitionOfRecords.foreach(record => {
           val connection = JDBCConnectePools.getConn()
+          // 在集合set中是否有这个key，如果有的话，则从数据库中取对应的值，并更新数据
           if (Remenber.keySet.contains(record._1)) {
             var preWordCount = 0
             var newWordCount = 0
@@ -1042,6 +1066,10 @@ window：定时的进行一个时间段内的数据处理
 - *window length* - The duration of the window (3 in the figure).
 - *sliding interval* - The interval at which the window operation is performed (2 in the figure).
 
+#### Transform实战
+
+Transform允许DStream上执行任意的RDD-to-RDD函数。
+
 需求：黑名单过滤
 
 访问日志 ==> DStream
@@ -1111,7 +1139,7 @@ object TransformApp {
 20180808,ww
 ```
 
-Spark Streaming整合Spark SQL完成词频统计操作
+#### Spark Streaming整合Spark SQL完成词频统计操作
 
 ```scala
 object SqlNetworkWordCount {
@@ -1179,7 +1207,7 @@ Due to the push model, **the streaming application needs to be up**, with the re
 
 
 
-Push方式整合
+**Push方式整合**
 
 Flume Agent的编写： flume_push_streaming.conf
 
@@ -1235,11 +1263,11 @@ object FlumePushWordCount {
 
 
 
-#### Approach 2: Pull-based Approach using a Custom Sink（推荐）
+#### Approach 2: Pull-based Approach using a Custom Sink
 
-pull的方式
+**（推荐）**
 
-Pull方式整合
+Pull**方式整合**
 
 这种方法不是运行Flume将数据直接推送到Spark Streaming，而是运行自定义的Flume接收器，该接收器可以执行以下操作。
 
@@ -1291,7 +1319,7 @@ The Receiver is implemented using the Kafka high-level consumer API. As with all
 
 接收器是使用Kafka高级消费者API实现的。 与所有接收器一样，通过接收器从Kafka接收的数据存储在Spark执行器中，然后由Spark Streaming启动的作业将处理数据。
 
-但是，在默认配置下，此方法可能会在发生故障时丢失数据（请参阅[接收器可靠性](https://spark.apache.org/docs/latest/streaming-programming-guide.html#receiver-reliability)。为确保零数据丢失，您还必须在Spark Streaming（Spark 1.2中引入）中另外启用预写日志，从而同步保存所有接收到的日志。
+但是，在默认配置下，此方法可能会在发生故障时丢失数据（请参阅[接收器可靠性](https://spark.apache.org/docs/latest/streaming-programming-guide.html#receiver-reliability)。为确保零数据丢失，您还必须在Spark Streaming（Spark 1.2中引入）中另外**启用预写日志**，从而同步保存所有接收到的日志。
 
 操作步骤：
 
@@ -1315,7 +1343,7 @@ The Receiver is implemented using the Kafka high-level consumer API. As with all
  
 ```
 
-<img src="../image/spark/image-20200522170729932.png" alt="image-20200522170729932" style="zoom:50%;" />
+<img src="../image/spark/image-20200522170729932.png" alt="image-20200522170729932" style="zoom: 33%;" />
 
 
 
@@ -1354,7 +1382,9 @@ object KafkaReceiverWordCount {
 
 
 
-### Direct Approach（常用 spark1.3引入）（推荐）
+### Direct Approach（常用 spark1.3引入）
+
+**（推荐）**
 
 特点：
 
@@ -1571,7 +1601,7 @@ flume-ng agent \
 kafka-console-consumer.sh --zookeeper localhost:2181 --topic streamingtopic
 ```
 
-![image-20200522215730375](../image/spark/image-20200522215730375.png)
+<img src="../image/spark/image-20200522215730375.png" alt="image-20200522215730375" style="zoom:50%;" />
 
 Spark Streaming对接Kafka
 
@@ -1606,7 +1636,7 @@ object KafkaStreamingApp {
 
 ```
 
-![image-20200522215838926](../image/spark/image-20200522215838926.png)
+<img src="../image/spark/image-20200522215838926.png" alt="image-20200522215838926" style="zoom:50%;" />
 
 现在是在本地进行测试的，在IDEA中运行LoggerGenerator，
 然后使用Flume、Kafka以及Spark Streaming进行处理操作。
@@ -1636,6 +1666,8 @@ Python实时产生数据
 访问URL->IP信息->referer和状态码->日志访问时间->写入到文件中
 
 linux crontab 定时
+
+定时的执行这个py文件，产生日志数据，写入到文件当中。
 
 指令为：crontab -e
 
@@ -1724,9 +1756,15 @@ flume-ng agent \
 -Dflume.root.logger=INFO,console
 ```
 
+数据范例：
 
+ip 时间 url status 来源 五部分。
 
-对接收的数据清洗
+```
+82.88.45.123 2020-05-23 19:06:00  "GET /class/112.html HTTP/1.1" 404  http://www.sogou.com/web?query=hadoop
+```
+
+对接收的数据清洗，只留下class的内容
 
 ```scala
   // 82.88.45.123 2020-05-23 19:06:00  "GET /class/112.html HTTP/1.1" 404  http://www.sogou.com/web?query=hadoop
@@ -1890,9 +1928,9 @@ hbase设计
 
 清数据：truncate + '表名'
 
+---
 
-
-
+**代码有实现**
 
 
 
@@ -1901,4 +1939,3 @@ hbase设计
 代码：
 
 - [sparkstreaming](../icoding/spark-examples/sparkstreaming)
-

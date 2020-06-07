@@ -36,9 +36,9 @@ RDD将数据处理的逻辑进行封装
 
 ![image-20200526134243720](../image/spark/image-20200526134243720.png)
 
-RDD（Resilient Distributed Dataset）叫做弹性分布式数据集，是Spark中最基本的数据抽象。代码中是一个抽象类，它代表一个不可变、可分区、里面的元素可并行计算的集合。
+​		RDD（Resilient Distributed Dataset）叫做弹性分布式数据集，是Spark中最基本的数据抽象。代码中是一个抽象类，它代表一个不可变、可分区、里面的元素可并行计算的集合。
 
-移动不如计算：优先位置，将计算移动到数据区。
+​		移动不如计算：优先位置，将计算移动到数据区。
 
 
 
@@ -56,7 +56,7 @@ RDD（Resilient Distributed Dataset）叫做弹性分布式数据集，是Spark�
 
 ![image-20200602094139651](../image/spark/image-20200602094139651.png)
 
-输入可能以多个文件的形式存储在HDFS上，每个File都包含了很多块，称为Block。当Spark读取这些文件作为输入时，会根据具体数据格式对应的InputFormat进行解析，一般是**将若干个Block合并成一个输入分片，称为InputSplit**，**注意**InputSplit不能跨越文件。随后将为这些输入分片生成具体的Task。InputSplit与Task是一一对应的关系。随后这些具体的Task每个都会被分配到集群上的某个节点的某个Executor去执行。
+​		输入可能以多个文件的形式存储在HDFS上，每个File都包含了很多块，称为Block。当Spark读取这些文件作为输入时，会根据具体数据格式对应的InputFormat进行解析，一般是**将若干个Block合并成一个输入分片，称为InputSplit**，**注意**InputSplit不能跨越文件（不同的file里的block不会到同一个分片当中）。随后将为这些输入分片生成具体的Task。InputSplit与Task是**一一对应**的关系。**这些具体的Task每个都会被分配到集群上的某个节点的某个Executor去执行。**
 
 1) 每个节点可以起一个或多个Executor。
 
@@ -64,27 +64,31 @@ RDD（Resilient Distributed Dataset）叫做弹性分布式数据集，是Spark�
 
 3) 每个Task执行的结果就是生成了目标RDD的一个partiton。
 
-注意: 这里的core是虚拟的core而不是机器的物理CPU核，可以理解为就是Executor的一个工作线程。而 **Task被执行的并发度 = Executor数目 * 每个Executor核数**。至于partition的数目：
+<img src="../image/spark/image-20200607135746047.png" alt="image-20200607135746047" style="zoom:50%;" />
 
-1) 对于数据读入阶段，例如sc.textFile，输入文件被划分为多少InputSplit就会需要多少初始Task。
+注意: 这里的core是虚拟的core而不是机器的物理CPU核，**可以理解为就是Executor的一个工作线程**。而 **Task被执行的并发度 = Executor数目 * 每个Executor核数**。
 
-2) 在Map阶段partition数目保持不变。
+至于partition的数目：
 
-3) 在Reduce阶段，RDD的聚合会触发shuffle操作，聚合后的RDD的partition数目跟具体操作有关，例如repartition操作会聚合成指定分区数，还有一些算子是可配置的。
+​	1) 对于数据读入阶段，例如sc.textFile，**输入文件被划分为多少InputSplit就会需要多少初始Task**。
 
-RDD在计算的时候，每个分区都会起一个task，所以**rdd的分区数目决定了总的的task数目**。申请的计算节点（Executor）数目和每个计算节点核数，决定了你同一时刻可以并行执行的task。
+​	2) 在Map阶段partition数目保持不变。
 
-比如的RDD有100个分区，那么计算的时候就会生成100个task，你的资源配置为10个计算节点，每个两2个核，同一时刻可以并行的task数目为20，计算这个RDD就需要5个轮次。如果计算资源不变，你有101个task的话，就需要6个轮次，在最后一轮中，只有一个task在执行，其余核都在空转。如果资源不变，你的RDD只有2个分区，那么同一时刻只有2个task运行，其余18个核空转，造成资源浪费。**这就是在spark调优中，增大RDD分区数目，增大任务并行度的做法。**
+​	3) 在Reduce阶段，RDD的聚合会触发shuffle操作，聚合后的RDD的partition数目跟具体操作有关，例如repartition操作会聚合成指定分区数，还有一些算子是可配置的。
+
+​		RDD在计算的时候，每个分区都会起一个task，所以**rdd的分区数目决定了总的的task数目**。申请的计算节点（Executor）数目和每个计算节点核数（core），决定了你同一时刻可以并行执行的task。
+
+​		比如RDD有100个分区，那么计算的时候就会生成100个task，资源配置为10个计算节点，每个两2个核，同一时刻可以并行的task数目为20，计算这个RDD就需要5个轮次。如果计算资源不变，你有101个task的话，就需要6个轮次，在最后一轮中，只有一个task在执行，其余核都在空转。如果资源不变，RDD只有2个分区，那么同一时刻只有2个task运行，其余18个核空转，造成资源浪费。**这就是在spark调优中，增大RDD分区数目，增大任务并行度的做法。**
 
  
 
 ### RDD的创建
 
-​	在Spark中创建RDD的创建方式可以分为三种：**从集合中创建RDD；从外部存储创建RDD；从其他RDD创建。**
+​		在Spark中创建RDD的创建方式可以分为三种：**从集合中创建RDD；从外部存储创建RDD；从其他RDD创建。**
 
 #### 从集合中创建
 
-从集合中创建RDD，spark主要提供了两种函数：parallelize和makeRDD
+​		从集合中创建RDD，spark主要提供了两种函数：parallelize和makeRDD
 
 1）使用parallelize()从集合创建
 
@@ -123,9 +127,9 @@ rdd2: org.apache.spark.rdd.RDD[String] = hdfs:// hadoop102:9000/RELEASE MapParti
 
 ### RDD的转换
 
-RDD整体上分为Value类型和Key-Value类型。
+​		RDD整体上分为**Value类型和Key-Value类型**。
 
-所有算子的计算功能都是由Executor执行。
+​		所有算子的计算功能都是由Executor执行。
 
 例如：
 
@@ -136,7 +140,7 @@ RDD整体上分为Value类型和Key-Value类型。
 
 这里的i是在Driver中
 
-_*i的计算在Executor中，需要在网络中传输这个i，因此需要考虑序列化，否则不能传输过去。
+_*i的计算在Executor中，需要在网络中传输这个i，因此**需要考虑序列化，否则不能传输过去**。
 
 ![image-20200527083153908](../image/spark/image-20200527083153908.png)
 
@@ -157,10 +161,12 @@ _*i的计算在Executor中，需要在网络中传输这个i，因此需要考�
 
 ![image-20200527073028004](../image/spark/image-20200527073028004.png)
 
+**mapPartitionsRdd&map：**
+
 ```scala
     // 可以对一个RDD中的所有分区进行遍历
     // 效率高于map算子，减少发送到执行器的交互次数
-    // 但是可能因为内存问题，造成OOM
+    // 但是可能因为整个Partition都在内存中的问题，造成OOM
     // 假设有N个元素，有M个分区，那么map的函数的将被调用N次,
     // 而mapPartitions被调用M次,一个函数一次处理所有分区。
     val mapPartitionsRdd = listRdd.mapPartitions(datas => {
@@ -171,6 +177,8 @@ _*i的计算在Executor中，需要在网络中传输这个i，因此需要考�
 ```
 
 ![image-20200527073045270](../image/spark/image-20200527073045270.png)
+
+**mapPartitionsWithIndex**
 
 ```scala
     // mapPartitionsWithIndex带分区号
@@ -186,6 +194,8 @@ _*i的计算在Executor中，需要在网络中传输这个i，因此需要考�
     tupleRDD.collect().foreach(println)
     tupleRDD1.collect().foreach(println)
 ```
+
+以分区作为index
 
 ![image-20200527074827689](../image/spark/image-20200527074827689.png)
 
@@ -231,7 +241,7 @@ _*i的计算在Executor中，需要在网络中传输这个i，因此需要考�
 
 ##### glom案例
 
-将每一个分区形成一个数组，形成新的RDD类型时RDD[Array[T]]
+​		将每一个分区形成一个数组，形成新的RDD类型时RDD[Array[T]]
 
 ```scala
 // glom 算子 将每一个分区形成一个数组，形成新的RDD类型时RDD[Array[T]] 4个分区
@@ -244,7 +254,7 @@ _*i的计算在Executor中，需要在网络中传输这个i，因此需要考�
 
 ##### groupBy(func)案例
 
-​	分组，按照传入函数的返回值进行分组。将相同的key对应的值放入一个迭代器。
+​		分组，按照传入函数的返回值进行分组。将相同的key对应的值放入一个迭代器。
 
 ```scala
     // groupBy 算子
@@ -290,7 +300,7 @@ _*i的计算在Executor中，需要在网络中传输这个i，因此需要考�
 
 ##### coalesce(numPartitions) 案例
 
-作用：缩减分区数，用于大数据集过滤后，提高小数据集的执行效率。
+​		作用：缩减分区数，用于大数据集过滤后，提高小数据集的执行效率。
 
 ```scala
 // coalesce算子 缩减分区 原先是4个分区 改为3个 
@@ -301,7 +311,7 @@ println(coalesceRDD.partitions.size)
 
 ##### repartition(numPartitions) 案例
 
-根据分区数，重新通过网络随机洗牌所有数据。
+​	根据分区数，重新通过网络随机洗牌所有数据。
 
 ```scala
     // repartition
@@ -329,7 +339,7 @@ val sortByRdd = listRdd.sortBy(x => x)
 sortByRdd.collect().foreach(println)
 ```
 
-改变分区等效于改变任务，用true ， false 升降序
+​		改变分区等效于改变任务，用true ， false 升降序
 
 ##### union(otherDataset) 案例
 
@@ -341,7 +351,7 @@ sortByRdd.collect().foreach(println)
 
 ##### subtract (otherDataset) 案例
 
-作用：计算差的一种函数，去除两个RDD中相同的元素，不同的RDD将保留下来
+​		作用：计算差的一种函数，去除两个RDD中相同的元素，不同的RDD将保留下来
 
 ```scala
     // subtract
@@ -351,7 +361,7 @@ sortByRdd.collect().foreach(println)
 
 ##### intersection(otherDataset) 案例
 
-交集后返回一个新的RDD
+​		交集后返回一个新的RDD
 
 ```scala
     // intersection
@@ -375,9 +385,11 @@ sortByRdd.collect().foreach(println)
 
 #### Key-Value类型
 
+**（重点）**
+
 ##### partitionBy案例
 
-作用：对pairRDD进行分区操作，如果原有的partionRDD和现有的partionRDD是一致的话就不进行分区， 否则会生成ShuffleRDD，即会产生shuffle过程。
+​		作用：对pairRDD进行分区操作，如果原有的partionRDD和现有的partionRDD是一致的话就不进行分区， 否则会生成ShuffleRDD，即会产生shuffle过程。
 
 ```scala
     val kvRDD = sc.parallelize(Array((1, "aaa"), (2, "bbb"), (3, "ccc"), (4, "ddd")), 4)
@@ -390,7 +402,7 @@ sortByRdd.collect().foreach(println)
 
 ##### groupByKey案例
 
-groupByKey也是对每个key进行操作，但只生成一个sequence。
+​		groupByKey也是对每个key进行操作，但只生成一个sequence（序列）。
 
 ```scala
 // groupByKey算子
@@ -402,7 +414,7 @@ wordPairsRDD.groupByKey().map(t=>(t._1,t._2.sum))
 
 ##### reduceByKey(func, [numTasks]) 案例
 
-在一个(K,V)的RDD上调用，返回一个(K,V)的RDD，使用指定的reduce函数，将相同key的值聚合到一起，reduce任务的个数可以通过第二个可选的参数来设置。
+​		在一个(K,V)的RDD上调用，返回一个(K,V)的RDD，使用指定的reduce函数，将相同key的值聚合到一起，reduce任务的个数可以通过第二个可选的参数来设置。
 
 ```scala
 // reduceByKey算子
@@ -411,11 +423,11 @@ wordPairsRDD.reduceByKey((x,y)=> x+y).collect().foreach(println)
 
 ##### reduceByKey和groupByKey的区别
 
-1. reduceByKey：按照key进行聚合，在shuffle之前有combine（预聚合）操作，返回结果是RDD[k,v].（推荐）
+1. reduceByKey：按照key进行聚合，在shuffle之前有combine（预聚合）操作，返回结果是RDD[k,v].**（推荐）**
 
 2. groupByKey：按照key进行分组，直接进行shuffle。每个数据都需要写入文件，之后再读取文件。
 
-3. 开发指导：reduceByKey比groupByKey，建议使用。但是需要注意是否会影响业务逻辑。
+3. 开发指导：reduceByKey比groupByKey更建议使用。但是需要注意是否会影响业务逻辑。
 
 ![image-20200527145127734](../image/spark/image-20200527145127734.png)
 
@@ -423,7 +435,7 @@ wordPairsRDD.reduceByKey((x,y)=> x+y).collect().foreach(println)
 
 参数：(zeroValue:U,[partitioner: Partitioner]) (seqOp: (U, V) => U,combOp: (U, U) => U)
 
-1. 作用：在kv对的RDD中，按key将value进行分组合并，合并时，将每个value和初始值作为seq函数的参数，进行计算，返回的结果作为一个新的kv对，然后再将结果按照key进行合并，最后将每个分组的value传递给combine函数进行计算（先将前两个value进行计算，将返回结果和下一个value传给combine函数，以此类推），将key与计算结果作为一个新的kv对输出。
+1. 作用：在kv对的RDD中，按key将value进行分组合并，合并时，**将每个value和初始值作为seq函数的参数，进行计算，返回的结果作为一个新的kv对，然后再将结果按照key进行合并，最后将每个分组的value传递给combine函数进行计算**（先将前两个value进行计算，将返回结果和下一个value传给combine函数，以此类推），将key与计算结果作为一个新的kv对输出。
 
 2. 参数描述：
 
@@ -437,7 +449,12 @@ wordPairsRDD.reduceByKey((x,y)=> x+y).collect().foreach(println)
 
 ![image-20200527154213260](../image/spark/image-20200527154213260.png)
 
-
+```scala
+    // aggregateByKey算子 出每个分区相同key对应值的最大值，然后相加
+    val aggregateByKeyRdd = sc.parallelize(List(("a", 3), ("a", 2), ("c", 4), ("b", 3), ("c", 6), ("c", 8)), 2)
+		// 初值0 分区内求相同值的最大值 分区间相同值相加
+    aggregateByKeyRdd.aggregateByKey(0)(Math.max(_, _), _ + _).collect().foreach(println)
+```
 
 ##### foldByKey案例
 
@@ -462,13 +479,21 @@ aggregateByKeyRdd.foldByKey(0)(_+_).collect().foreach(println)
 
 （2）mergeValue: 如果这是一个在处理当前分区之前已经遇到的键，它会使用mergeValue()方法将该键的累加器对应的当前值与这个新的值进行合并
 
-（3）mergeCombiners: 由于每个分区都是独立处理的， 因此对于同一个键可以有多个累加器。如果有两个或者更多的分区都有对应同一个键的累加器， 就需要使用用户提供的 mergeCombiners() 方法将各个分区的结果进行合并。
+（3）mergeCombiners: 由于**每个分区都是独立处理的**， 因此对于同一个键可以有多个累加器。如果有两个或者**更多的分区都有对应同一个键的累加器**， 就需要使用用户提供的 mergeCombiners() 方法将各个分区的结果进行合并。
 
 ![image-20200530201616173](../image/spark/image-20200530201616173.png)
 
+```scala
+    // combineByKey算子 区间内统计 区间内求和 区间间求除法
+    val input = sc.parallelize(Array(("a", 88), ("b", 95), ("a", 91), ("b", 93), ("a", 95), ("b", 98)), 2)
+    val combine = input.combineByKey((_, 1), (acc: (Int, Int), v) => (acc._1 + v, acc._2 + 1), (acc1: (Int, Int), acc2: (Int, Int)) => (acc1._1 + acc2._1, acc1._2 + acc2._2))
+    combine.collect
+
+```
+
 ##### sortByKey([ascending], [numTasks]) 案例
 
-作用：在一个(K,V)的RDD上调用，K必须实现Ordered接口，返回一个按照key进行排序的(K,V)的RDD
+​		作用：在一个(K,V)的RDD上调用，K必须实现Ordered接口，返回一个按照key进行排序的(K,V)的RDD
 
 按照key的正序
 
@@ -478,7 +503,7 @@ input.sortByKey(true).collect().foreach(println)
 
 ##### mapValues案例
 
-针对于(K,V)形式的类型只对V进行操作
+​		针对于(K,V)形式的类型只对V进行操作
 
 ```scala 
 input.mapValues(_+"|||").collect().foreach(println)
@@ -486,7 +511,7 @@ input.mapValues(_+"|||").collect().foreach(println)
 
 ##### join(otherDataset, [numTasks]) 案例
 
-作用：在类型为(K,V)和(K,W)的RDD上调用，返回一个相同key对应的所有元素对在一起的(K,(V,W))的RDD
+​		作用：在类型为(K,V)和(K,W)的RDD上调用，返回一个相同key对应的所有元素对在一起的(K,(V,W))的RDD
 
 ##### cogroup(otherDataset, [numTasks]) 案例
 
@@ -512,11 +537,39 @@ input.cogroup(input2).collect().foreach(println)
 
 ![image-20200530221905063](../image/spark/image-20200530221905063.png)
 
+```scala
+ // 统计出每一个省份广告被点击次数的TOP3
+    val line = sc.textFile("/Users/wangfulin/bigdata/data/agent.log")
+    val provinceAdToOne = line.map(x => {
+      val datas = x.split(" ")
+      ((datas(1), datas(4)), 1)
+    })
+    // 每个省中  相同的key被点击的总数
+    val provinceAdSum = provinceAdToOne.reduceByKey(_ + _)
+    provinceAdSum.take(5).foreach(println)
+    // ((省，广告),总数) 返回 (省，（广告,总数）)
+    val provinceToAdSum = provinceAdSum.map(x => {
+      (x._1._1, (x._1._2, x._2))
+    })
+
+    provinceToAdSum.take(5).foreach(println)
+
+    // 按省分类
+    val provinceGroup = provinceToAdSum.groupByKey()
+
+    provinceGroup.take(5).foreach(println)
+    val provinceAdTop3 = provinceGroup.mapValues { x =>
+      x.toList.sortWith((x, y) => x._2 > y._2).take(3) //list 里面两两相互比较
+    }.foreach(println)
+```
+
+
+
 #### Action
 
 #### reduce(func)案例
 
-作用：通过func函数聚集RDD中的**所有元素**，先聚合分区内数据，再聚合分区间数据。
+​		作用：通过func函数聚集RDD中的**所有元素**，先聚合分区内数据，再聚合分区间数据。
 
 ```scala
 // reduce
@@ -525,7 +578,7 @@ println(actionRdd.reduce(_ + _))
 
 ##### collect()案例
 
-作用：在驱动程序中，以数组的形式返回数据集的所有元素。
+​		作用：在驱动程序中，以数组的形式返回数据集的所有元素。
 
 ```scala
 actionRdd.collect().foreach(println)
@@ -533,19 +586,19 @@ actionRdd.collect().foreach(println)
 
 ##### count()案例
 
-返回RDD中元素的个数
+​		返回RDD中元素的个数
 
 ##### first()案例
 
-返回RDD中的第一个元素
+​		返回RDD中的第一个元素
 
 ##### take(n)案例
 
-返回一个由RDD的前n个元素组成的数组
+​		返回一个由RDD的前n个元素组成的数组
 
 ##### takeOrdered(n)案例
 
-返回该RDD排序后的前n个元素组成的**数组**
+​		返回该RDD排序后的前n个元素组成的**数组**
 
 ##### aggregate案例
 
@@ -579,33 +632,33 @@ actionRdd.collect().foreach(println)
 
 #### RDD中的函数传递
 
-在实际开发中我们往往需要自己定义一些对于RDD的操作，那么此时需要主要的是，**初始化工作是在Driver端进行的，而实际运行程序是在Executor端进行的，**这就涉及到了跨进程通信，是需要序列化的。
+​		在实际开发中我们往往需要自己定义一些对于RDD的操作，那么此时需要主要的是，**初始化工作是在Driver端进行的，而实际运行程序是在Executor端进行的，**这就涉及到了跨进程通信，**是需要序列化的**。
 
-使类继承scala.Serializable即可。
+类继承scala.Serializable即可。
 
 #### RDD依赖关系
 
-RDD只支持粗粒度转换，即在大量记录上执行的单个操作。**将创建RDD的一系列Lineage（血统）记录下来，以便恢复丢失的分区。**RDD的Lineage会记录RDD的元数据信息和转换行为，当该RDD的部分分区数据丢失时，它可以根据这些信息来重新运算和恢复丢失的数据分区。
+​		RDD只支持粗粒度转换，即在大量记录上执行的单个操作。**将创建RDD的一系列Lineage（血统）记录下来，以便恢复丢失的分区。**RDD的Lineage会记录RDD的元数据信息和转换行为，当该RDD的部分分区数据丢失时，它可以根据这些信息来重新运算和恢复丢失的数据分区。
 
 RDD和它依赖的父RDD（s）的关系有两种不同的类型，即窄依赖（narrow dependency）和宽依赖（wide dependency）。
 
 ##### 窄依赖
 
-窄依赖指的是每一个父RDD的Partition最多被子RDD的一个Partition使用,窄依赖我们形象的比喻为独生子女
+​		窄依赖指的是每一个父RDD的Partition最多被子RDD的一个Partition使用,窄依赖我们形象的比喻为独生子女。
 
 ![image-20200531154250237](../image/spark/image-20200531154250237.png)
 
 #### 宽依赖
 
-宽依赖指的是多个子RDD的Partition会依赖同一个父RDD的Partition，会引起**shuffle**,总结：宽依赖我们形象的比喻为超生
+​		宽依赖指的是多个子RDD的Partition会依赖同一个父RDD的Partition，会引起**shuffle**。总结：宽依赖我们形象的比喻为超生
 
 ![image-20200531160115202](../image/spark/image-20200531160115202.png)
 
 #### DAG
 
-DAG(Directed Acyclic Graph)叫做有向无环图，原始的RDD通过一系列的转换就就形成了DAG，**根据RDD之间的依赖关系的不同将DAG划分成不同的Stage（阶段）**，对于窄依赖，partition的转换处理在Stage中完成计算。对于宽依赖，由于有Shuffle的存在，只能在parent RDD处理完成后，才能开始接下来的计算，**因此宽依赖是划分Stage的依据**。
+DAG(Directed Acyclic Graph)叫做有向无环图，原始的RDD通过一系列的转换就就形成了DAG，**根据RDD之间的依赖关系的不同将DAG划分成不同的Stage（阶段）**，**对于窄依赖，partition的转换处理在Stage中完成计算。对于宽依赖，由于有Shuffle的存在，只能在parent RDD处理完成后，才能开始接下来的计算**，**因此宽依赖是划分Stage的依据**。（宽依赖是，目标RDD的Partition引用多个父Partition）
 
-![image-20200531161256583](../image/spark/image-20200531161256583.png)
+<img src="../image/spark/image-20200531161256583.png" alt="image-20200531161256583" style="zoom:67%;" />
 
 #### 任务划分
 
@@ -617,7 +670,7 @@ RDD任务切分中间分为：Application、Job、Stage和Task
 
 3）Stage：根据RDD之间的依赖关系的不同将Job划分成不同的Stage，遇到一个宽依赖则划分一个Stage。
 
-![image-20200531164015217](../image/spark/image-20200531164015217.png)
+<img src="../image/spark/image-20200531164015217.png" alt="image-20200531164015217" style="zoom: 67%;" />
 
 反向推，**到底有多少阶段 = 1 + shuffle个数，1是这个整体**
 
@@ -627,38 +680,37 @@ RDD任务切分中间分为：Application、Job、Stage和Task
 
 #### RDD缓存
 
-RDD通过persist方法或cache方法可以将前面的计算结果缓存，默认情况下 persist() 会把数据以序列化的形式缓存在 JVM 的堆空间中。 
+​		RDD通过persist方法或cache方法可以将前面的计算结果缓存，默认情况下 persist() 会把数据以序列化的形式缓存在 JVM 的堆空间中。 
 
-但是并不是这两个方法被调用时立即缓存，而是**触发后面的action时，该RDD将会被缓存在计算节点的内存中，并供后面重用。**
+​		但是并不是这两个方法被调用时立即缓存，而是**触发后面的action时，该RDD将会被缓存在计算节点的内存中，并供后面重用。**
 
-![img](../image/spark/wpsTVJ8he.png) 
+<img src="../image/spark/wpsTVJ8he.png" alt="img" style="zoom: 50%;" /> 
 
 通过查看源码发现cache最终也是调用了persist方法，默认的存储级别都是仅在内存存储一份，Spark的存储级别还有好多种，存储级别在object StorageLevel中定义的。
 
-![img](../image/spark/wpsic70jn.png) 
+<img src="../image/spark/wpsic70jn.png" alt="img" style="zoom: 33%;" /> 
 
-在存储级别的末尾加上“_2”来把持久化数据存为两份![img](../image/spark/wpslDlJmG.png)
+在存储级别的末尾加上“_2”来把持久化数据存为两份
 
-缓存有可能丢失，或者存储存储于内存的数据由于内存不足而被删除，RDD的缓存容错机制保证了即使缓存丢失也能保证计算的正确执行。通过基于RDD的一系列转换，丢失的数据会被重算，由于RDD的各个Partition是相对独立的，因此只需要计算丢失的部分即可，并不需要重算全部Partition。
+![img](../image/spark/wpslDlJmG.png)
+
+​		缓存有可能丢失，或者存储在内存的数据由于内存不足而被删除，RDD的缓存容错机制保证了即使缓存丢失也能保证计算的正确执行。通过基于RDD的一系列转换，丢失的数据会被重算，由于RDD的各个Partition是相对独立的，因此只需要计算丢失的部分即可，并不需要重算全部Partition。
 
 #### RDD CheckPoint
 
-Spark中对于数据的保存除了持久化操作之外，还提供了一种检查点的机制，检查点（本质是通过将RDD写入Disk做检查点）是为了通过lineage做容错的辅助，lineage过长会造成容错成本过高，这样就不如在中间阶段做检查点容错，如果之后有节点出现问题而丢失分区，从做检查点的RDD开始重做Lineage，就会减少开销。检查点通过将数据写入到HDFS文件系统实现了RDD的检查点功能。
+（重要）
 
-为当前RDD设置检查点。该函数将会创建一个二进制的文件，并存储到checkpoint目录中，该目录是用[Spark](https://www.iteblog.com/archives/tag/spark/)Context.setCheckpointDir()设置的。在checkpoint的过程中，该RDD的所有依赖于父RDD中的信息将全部被移除。对RDD进行checkpoint操作并不会马上被执行，必须执行Action操作才能触发。
+​		Spark中对于数据的保存除了持久化操作之外，还提供了一种检查点的机制，检查点（本质是通过将RDD写入Disk做检查点）**是为了通过lineage做容错的辅助**，lineage过长会造成容错成本过高，这样就不如在中间阶段做检查点容错，**如果之后有节点出现问题而丢失分区，从做检查点的RDD开始重做Lineage，就会减少开销。**检查点通过将数据写入到HDFS文件系统实现了RDD的检查点功能。
 
-
+​		为当前RDD设置检查点。该函数将会创建一个二进制的文件，并存储到checkpoint目录中，该目录是用[Spark](https://www.iteblog.com/archives/tag/spark/)Context.setCheckpointDir()设置的。在checkpoint的过程中，该RDD的所有依赖于父RDD中的信息将全部被移除。对RDD进行checkpoint操作并不会马上被执行，必须执行Action操作才能触发。
 
 ```scala
  sc.setCheckpointDir("hdfs://hadoop102:9000/checkpoint")
-
 ```
-
-
 
 #### RDD数据分区器
 
-Spark目前**支持Hash分区和Range分区**，用户也可以自定义分区，Hash分区为当前的默认分区，**Spark中分区器直接决定了RDD中分区的个数、RDD中每条数据经过Shuffle过程属于哪个分区和Reduce的个数**
+​		Spark目前**支持Hash分区和Range分区**，用户也可以自定义分区，Hash分区为当前的默认分区，**Spark中分区器直接决定了RDD中分区的个数、RDD中每条数据经过Shuffle过程属于哪个分区和Reduce的个数**
 
 **注意：**
 
@@ -680,21 +732,21 @@ partitioned.partitioner
 
 ##### Hash分区
 
-HashPartitioner分区的原理：对于给定的key，计算其hashCode，并除以分区的个数取余，如果余数小于0，则用余数+分区的个数（否则加0），最后返回的值就是这个key所属的分区ID。
+​		HashPartitioner分区的原理：对于给定的key，计算其hashCode，并除以分区的个数取余，如果余数小于0，则用余数+分区的个数（否则加0），最后返回的值就是这个key所属的分区ID。
 
 ##### Ranger分区
 
-HashPartitioner分区弊端：**可能导致每个分区中数据量的不均匀，极端情况下会导致某些分区拥有RDD的全部数据。**
+​		HashPartitioner分区弊端：**可能导致每个分区中数据量的不均匀，极端情况下会导致某些分区拥有RDD的全部数据。**
 
-RangePartitioner作用：将一定范围内的数映射到某一个分区内，**尽量保证每个分区中数据量的均匀，而且分区与分区之间是有序的**，**一个分区中的元素肯定都是比另一个分区内的元素小或者大，但是分区内的元素是不能保证顺序的。****简单的说就是将一定范围内的数映射到某一个分区内。**实现过程为：
+​		RangePartitioner作用：将一定范围内的数映射到某一个分区内，**尽量保证每个分区中数据量的均匀，而且分区与分区之间是有序的**，**一个分区中的元素肯定都是比另一个分区内的元素小或者大，但是分区内的元素是不能保证顺序的。**简单的说就是将一定范围内的数映射到某一个分区内。实现过程为：
 
-第一步：先从整个RDD中抽取出样本数据，将样本数据排序，计算出每个分区的最大key值，形成一个Array[KEY]类型的数组变量rangeBounds；
+​		第一步：先从整个RDD中抽取出样本数据，将样本数据排序，计算出每个分区的最大key值，形成一个Array[KEY]类型的数组变量rangeBounds；
 
-第二步：判断key在rangeBounds中所处的范围，给出该key值在下一个RDD中的分区id下标；该分区器要求RDD中的KEY类型必须是可以排序的
+​		第二步：判断key在rangeBounds中所处的范围，给出该key值在下一个RDD中的分区id下标；该分区器要求RDD中的KEY类型必须是可以排序的
 
 ##### 自定义分区
 
-要实现自定义的分区器，你需要继承 org.apache.spark.Partitioner 类并实现下面三个方法。 
+要实现自定义的分区器，需要继承 org.apache.spark.Partitioner 类并实现下面三个方法。 
 
 （1）numPartitions: Int:返回创建出来的分区数。
 
@@ -705,8 +757,6 @@ RangePartitioner作用：将一定范围内的数映射到某一个分区内，*
 需求：将相同后缀的数据写入相同的文件，通过将相同后缀的数据分区到相同的分区并保存输出来实现。
 
 ### 数据读取与保存
-
-
 
 #### HBase数据库
 
@@ -736,7 +786,9 @@ RDD：分布式数据集
 
 ### 累加器
 
-累加器用来对信息进行聚合，通常在向 Spark传递函数时，比如使用 map() 函数或者用 filter() 传条件时，可以使用驱动器程序中定义的变量，但是集群中运行的每个任务都会得到这些变量的一份新的副本，更新这些副本的值也不会影响驱动器中的对应变量。如果我们想实现所有分片处理时更新共享变量的功能，那么累加器可以实现我们想要的效果。
+（只写共享变量）
+
+​		累加器用来对信息进行聚合，通常在向 Spark传递函数时，比如使用 map() 函数或者用 filter() 传条件时，可以使用驱动器程序中定义的变量，但是集群中运行的每个任务都会得到这些变量的一份新的副本，更新这些副本的值也不会影响驱动器中的对应变量。如果我们想实现所有分片处理时更新共享变量的功能，那么累加器可以实现我们想要的效果。
 
 累加器使用之前
 
@@ -814,11 +866,11 @@ sc.register(logAccumulator)
 
 ### 广播变量
 
-广播变量用来高效分发较大的对象。向所有工作节点发送一个较大的只读值，以供一个或多个Spark操作使用。 在多个并行操作中使用同一个变量，但是 Spark会为每个任务分别发送。
+（只读共享变量）
+
+​		**广播变量用来高效分发较大的对象**。向所有工作节点发送一个较大的只读值，以供一个或多个Spark操作使用。 在多个并行操作中使用同一个变量，但是 Spark会为每个任务分别发送。
 
 变量只会被发到各个节点一次，应作为只读值处理(修改这个值不会影响到别的节点)。
-
-
 
 ### SparkCore总结
 

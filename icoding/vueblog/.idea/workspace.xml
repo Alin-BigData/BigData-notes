@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ChangeListManager">
+    <list default="true" id="e86ed4f0-4b81-4ef9-838c-c96b23c1696b" name="Default Changelist" comment="">
+      <change beforePath="$PROJECT_DIR$/../spark-examples/sparkstreaming/pom.xml" beforeDir="false" afterPath="$PROJECT_DIR$/../spark-examples/sparkstreaming/pom.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../spark/Spark-内核解析.md" beforeDir="false" afterPath="$PROJECT_DIR$/../../spark/Spark-内核解析.md" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="CodeStyleSettingsInfer">
+    <option name="done" value="true" />
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Class" />
+      </list>
+    </option>
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$/../.." />
+  </component>
+  <component name="MavenImportPreferences">
+    <option name="generalSettings">
+      <MavenGeneralSettings>
+        <option name="mavenHome" value="$USER_HOME$/java/apache-maven-3.6.0" />
+        <option name="userSettingsFile" value="$USER_HOME$/java/apache-maven-3.6.0/conf/settings.xml" />
+      </MavenGeneralSettings>
+    </option>
+    <option name="importingSettings">
+      <MavenImportingSettings>
+        <option name="vmOptionsForImporter" value="-Xmx768m" />
+      </MavenImportingSettings>
+    </option>
+  </component>
+  <component name="ProjectCodeStyleSettingsMigration">
+    <option name="version" value="1" />
+  </component>
+  <component name="ProjectId" id="1cwAT9wn3Xnu4qBqbo3rRr9kVQk" />
+  <component name="ProjectLevelVcsManager" settingsEditedManually="true">
+    <ConfirmationsSetting value="1" id="Add" />
+  </component>
+  <component name="ProjectViewState">
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent">
+    <property name="RequestMappingsPanelOrder0" value="0" />
+    <property name="RequestMappingsPanelOrder1" value="1" />
+    <property name="RequestMappingsPanelWidth0" value="75" />
+    <property name="RequestMappingsPanelWidth1" value="75" />
+    <property name="RunOnceActivity.OpenProjectViewOnStart" value="true" />
+    <property name="RunOnceActivity.ShowReadmeOnStart" value="true" />
+    <property name="WebServerToolWindowFactoryState" value="false" />
+    <property name="aspect.path.notification.shown" value="true" />
+    <property name="nodejs_interpreter_path.stuck_in_default_project" value="undefined stuck path" />
+    <property name="nodejs_npm_path_reset_for_default_project" value="true" />
+    <property name="settings.editor.selected.configurable" value="preferences.pluginManager" />
+  </component>
+  <component name="RunManager" selected="Spring Boot.VueblogApplication">
+    <configuration name="CodeGenerator" type="Application" factoryName="Application" temporary="true" nameIsGenerated="true">
+      <option name="MAIN_CLASS_NAME" value="com.wangfulin.vueblog.CodeGenerator" />
+      <module name="vueblog" />
+      <extension name="coverage">
+        <pattern>
+          <option name="PATTERN" value="com.wangfulin.vueblog.*" />
+          <option name="ENABLED" value="true" />
+        </pattern>
+      </extension>
+      <method v="2">
+        <option name="Make" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="VueblogApplication" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot">
+      <module name="vueblog" />
+      <option name="SPRING_BOOT_MAIN_CLASS" value="com.wangfulin.vueblog.VueblogApplication" />
+      <method v="2">
+        <option name="Make" enabled="true" />
+      </method>
+    </configuration>
+    <recent_temporary>
+      <list>
+        <item itemvalue="Application.CodeGenerator" />
+      </list>
+    </recent_temporary>
+  </component>
+  <component name="SvnConfiguration">
+    <configuration />
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="e86ed4f0-4b81-4ef9-838c-c96b23c1696b" name="Default Changelist" comment="" />
+      <created>1591429286220</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1591429286220</updated>
+      <workItem from="1591429288268" duration="4238000" />
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="2" />
+  </component>
+  <component name="WindowStateProjectService">
+    <state width="1192" height="264" key="GridCell.Tab.0.bottom" timestamp="1591441912069">
+      <screen x="0" y="23" width="1440" height="822" />
+    </state>
+    <state width="1192" height="334" key="GridCell.Tab.0.bottom/-1600.71.1600.877/0.23.1440.822@-1600.71.1600.877" timestamp="1591433678592" />
+    <state width="1192" height="264" key="GridCell.Tab.0.bottom/-1600.71.1600.877/0.23.1440.822@0.23.1440.822" timestamp="1591441912069" />
+    <state width="1192" height="264" key="GridCell.Tab.0.center" timestamp="1591441912069">
+      <screen x="0" y="23" width="1440" height="822" />
+    </state>
+    <state width="1192" height="334" key="GridCell.Tab.0.center/-1600.71.1600.877/0.23.1440.822@-1600.71.1600.877" timestamp="1591433678592" />
+    <state width="1192" height="264" key="GridCell.Tab.0.center/-1600.71.1600.877/0.23.1440.822@0.23.1440.822" timestamp="1591441912069" />
+    <state width="1192" height="264" key="GridCell.Tab.0.left" timestamp="1591441912068">
+      <screen x="0" y="23" width="1440" height="822" />
+    </state>
+    <state width="1192" height="334" key="GridCell.Tab.0.left/-1600.71.1600.877/0.23.1440.822@-1600.71.1600.877" timestamp="1591433678591" />
+    <state width="1192" height="264" key="GridCell.Tab.0.left/-1600.71.1600.877/0.23.1440.822@0.23.1440.822" timestamp="1591441912068" />
+    <state width="1192" height="264" key="GridCell.Tab.0.right" timestamp="1591441912069">
+      <screen x="0" y="23" width="1440" height="822" />
+    </state>
+    <state width="1192" height="334" key="GridCell.Tab.0.right/-1600.71.1600.877/0.23.1440.822@-1600.71.1600.877" timestamp="1591433678592" />
+    <state width="1192" height="264" key="GridCell.Tab.0.right/-1600.71.1600.877/0.23.1440.822@0.23.1440.822" timestamp="1591441912069" />
+    <state width="1192" height="264" key="GridCell.Tab.1.bottom" timestamp="1591441912070">
+      <screen x="0" y="23" width="1440" height="822" />
+    </state>
+    <state width="1192" height="334" key="GridCell.Tab.1.bottom/-1600.71.1600.877/0.23.1440.822@-1600.71.1600.877" timestamp="1591433678593" />
+    <state width="1192" height="264" key="GridCell.Tab.1.bottom/-1600.71.1600.877/0.23.1440.822@0.23.1440.822" timestamp="1591441912070" />
+    <state width="1192" height="264" key="GridCell.Tab.1.center" timestamp="1591441912070">
+      <screen x="0" y="23" width="1440" height="822" />
+    </state>
+    <state width="1192" height="334" key="GridCell.Tab.1.center/-1600.71.1600.877/0.23.1440.822@-1600.71.1600.877" timestamp="1591433678593" />
+    <state width="1192" height="264" key="GridCell.Tab.1.center/-1600.71.1600.877/0.23.1440.822@0.23.1440.822" timestamp="1591441912070" />
+    <state width="1192" height="264" key="GridCell.Tab.1.left" timestamp="1591441912070">
+      <screen x="0" y="23" width="1440" height="822" />
+    </state>
+    <state width="1192" height="334" key="GridCell.Tab.1.left/-1600.71.1600.877/0.23.1440.822@-1600.71.1600.877" timestamp="1591433678592" />
+    <state width="1192" height="264" key="GridCell.Tab.1.left/-1600.71.1600.877/0.23.1440.822@0.23.1440.822" timestamp="1591441912070" />
+    <state width="1192" height="264" key="GridCell.Tab.1.right" timestamp="1591441912070">
+      <screen x="0" y="23" width="1440" height="822" />
+    </state>
+    <state width="1192" height="334" key="GridCell.Tab.1.right/-1600.71.1600.877/0.23.1440.822@-1600.71.1600.877" timestamp="1591433678593" />
+    <state width="1192" height="264" key="GridCell.Tab.1.right/-1600.71.1600.877/0.23.1440.822@0.23.1440.822" timestamp="1591441912070" />
+    <state width="1192" height="264" key="GridCell.Tab.2.bottom" timestamp="1591441912071">
+      <screen x="0" y="23" width="1440" height="822" />
+    </state>
+    <state width="1192" height="264" key="GridCell.Tab.2.bottom/-1600.71.1600.877/0.23.1440.822@-1600.71.1600.877" timestamp="1591433650652" />
+    <state width="1192" height="264" key="GridCell.Tab.2.bottom/-1600.71.1600.877/0.23.1440.822@0.23.1440.822" timestamp="1591441912071" />
+    <state width="1192" height="264" key="GridCell.Tab.2.center" timestamp="1591441912071">
+      <screen x="0" y="23" width="1440" height="822" />
+    </state>
+    <state width="1192" height="264" key="GridCell.Tab.2.center/-1600.71.1600.877/0.23.1440.822@-1600.71.1600.877" timestamp="1591433650651" />
+    <state width="1192" height="264" key="GridCell.Tab.2.center/-1600.71.1600.877/0.23.1440.822@0.23.1440.822" timestamp="1591441912071" />
+    <state width="1192" height="264" key="GridCell.Tab.2.left" timestamp="1591441912071">
+      <screen x="0" y="23" width="1440" height="822" />
+    </state>
+    <state width="1192" height="264" key="GridCell.Tab.2.left/-1600.71.1600.877/0.23.1440.822@-1600.71.1600.877" timestamp="1591433650651" />
+    <state width="1192" height="264" key="GridCell.Tab.2.left/-1600.71.1600.877/0.23.1440.822@0.23.1440.822" timestamp="1591441912071" />
+    <state width="1192" height="264" key="GridCell.Tab.2.right" timestamp="1591441912071">
+      <screen x="0" y="23" width="1440" height="822" />
+    </state>
+    <state width="1192" height="264" key="GridCell.Tab.2.right/-1600.71.1600.877/0.23.1440.822@-1600.71.1600.877" timestamp="1591433650651" />
+    <state width="1192" height="264" key="GridCell.Tab.2.right/-1600.71.1600.877/0.23.1440.822@0.23.1440.822" timestamp="1591441912071" />
+  </component>
+</project>

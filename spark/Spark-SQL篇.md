@@ -15,50 +15,53 @@
 	解压到app目录：tar -zxvf jdk-7u51-linux-x64.tar.gz -C ~/app/
 	验证安装是否成功：~/app/jdk1.7.0_51/bin      ./java -version
 	建议把bin目录配置到系统环境变量(~/.bash_profile)中
+
+```shell
 		export JAVA_HOME=/home/hadoop/app/jdk1.7.0_51
 		export PATH=$JAVA_HOME/bin:$PATH
+```
 
 3）机器参数设置
 	hostname: hadoop001
 
-	修改机器名: /etc/sysconfig/network
-		NETWORKING=yes
-		HOSTNAME=hadoop001
-	
-	设置ip和hostname的映射关系: /etc/hosts
-		192.168.199.200 hadoop001
-		127.0.0.1 localhost
-	
-	ssh免密码登陆(本步骤可以省略，但是后面你重启hadoop进程时是需要手工输入密码才行)
-		ssh-keygen -t rsa
-		cp ~/.ssh/id_rsa.pub ~/.ssh/authorized_keys
+```shell
+#修改机器名: /etc/sysconfig/network
+	NETWORKING=yes
+	HOSTNAME=hadoop001
+
+#设置ip和hostname的映射关系: /etc/hosts
+	192.168.199.200 hadoop001
+	127.0.0.1 localhost
+
+#ssh免密码登陆(本步骤可以省略，但是后面你重启hadoop进程时是需要手工输入密码才行)
+	ssh-keygen -t rsa
+	cp ~/.ssh/id_rsa.pub ~/.ssh/authorized_keys
+```
 
 4）Hadoop配置文件修改: ~/app/hadoop-2.6.0-cdh5.7.0/etc/hadoop
 	hadoop-env.sh
-		
 
-```
+```shell
 export  JAVA_HOME=/home/hadoop/app/jdk1.7.0_51
 ```
 
 修改core-site.xml
 
+```xml
+<property>
+    	<name>fs.defaultFS</name>
+    	<value>hdfs://hadoop001:8020</value>
+	</property>	
+
 	<property>
-	    	<name>fs.defaultFS</name>
-	    	<value>hdfs://hadoop001:8020</value>
-		</property>	
-	
-		<property>
-	    	<name>hadoop.tmp.dir</name>
-	    	<value>/home/hadoop/app/tmp</value>
-		</property>	
-
-
-​	
+    	<name>hadoop.tmp.dir</name>
+    	<value>/home/hadoop/app/tmp</value>
+	</property>	
+```
 
 hdfs-site.xml
 
-```
+```xml
 <property>
        <name>dfs.replication</name>
        <value>1</value>
@@ -67,26 +70,41 @@ hdfs-site.xml
 
 5）格式化HDFS
 	注意：这一步操作，只是在第一次时执行，每次如果都格式化的话，那么HDFS上的数据就会被清空
+
+```shell
 	bin/hdfs namenode -format
+```
 
 6）启动HDFS
-	sbin/start-dfs.sh
 
-	验证是否启动成功:
-		jps
-			DataNode
-			SecondaryNameNode
-			NameNode
-	
-		浏览器
-			http://hadoop001:50070/
+```shell
+	sbin/start-dfs.sh
+```
+
+
+
+```shell
+#验证是否启动成功:
+	jps
+		DataNode
+		SecondaryNameNode
+		NameNode
+
+#浏览器
+		http://hadoop001:50070/
+```
 
 7）停止HDFS
+
+```shell
 	sbin/stop-dfs.sh
+```
+
+
 
 ### YARN架构
 
-1 RM(ResourceManager) + N NM(NodeManager)
+1 RM(ResourceManager) + N个NM(NodeManager)
 
 ResourceManager的职责： 一个集群active状态的RM只有一个，负责整个集群的资源管理和调度
 1）处理客户端的请求(启动/杀死)
@@ -103,20 +121,22 @@ NodeManager：整个集群中有N个，负责单个节点的资源管理和使�
 ApplicationMaster：每个应用/作业对应一个，负责应用程序的管理
 1）数据切分
 2）为应用程序向RM申请资源(container)，并分配给内部任务
-3）与NM通信以启停task， task是运行在container中的
+3）与NM通信以启/停task， task是运行在container中的
 4）task的监控和容错
 
 Container：
 对任务运行情况的描述：cpu、memory、环境变量
 
+![image-20200607160125681](../image/spark/image-20200607160125681.png)
+
 #### YARN执行流程
 
 1）用户向YARN提交作业
-2）RM为该作业分配第一个container(AM)
+2）RM为该作业分配第一个container(ApplicationMaster)
 3）RM会与对应的NM通信，要求NM在这个container上启动应用程序的AM
-4) AM首先向RM注册，然后AM将为各个任务申请资源，并监控运行情况
+4)   AM首先向RM注册，然后AM将为各个任务申请资源，并监控运行情况
 5）AM采用轮训的方式通过RPC协议向RM申请和领取资源
-6）AM申请到资源以后，便和相应的NM通信，要求NM启动任务
+6）AM申请到资源以后，便和**相应**的NM通信，要求NM启动任务
 7）NM启动我们作业对应的task
 
 
@@ -190,7 +210,7 @@ UDF：自定义函数
 3）配置
 	系统环境变量(~/.bahs_profile)
 
-```
+```shell
 export HIVE_HOME=/home/hadoop/app/hive-1.1.0-cdh5.7.0
 export PATH=$HIVE_HOME/bin:$PATH
 ```
@@ -199,25 +219,27 @@ export PATH=$HIVE_HOME/bin:$PATH
 
 hive-site.xml ： sparksql数据库名称
 
-	<property>
-	  		<name>javax.jdo.option.ConnectionURL</name>
-	    	<value>jdbc:mysql://localhost:3306/sparksql?createDatabaseIfNotExist=true</value>
-	    </property>
-	    
-	 <property>
-		<name>javax.jdo.option.ConnectionDriverName</name>
-	    <value>com.mysql.jdbc.Driver</value>
-	  </property>
-	  
-	  <property>
-			<name>javax.jdo.option.ConnectionUserName</name>
-	    	<value>root</value>
-	    </property>
-	    
-	   <property>
-	    <name>javax.jdo.option.ConnectionPassword</name>
-	    	<value>root</value>
-	    </property>
+```xml
+<property>
+  		<name>javax.jdo.option.ConnectionURL</name>
+    	<value>jdbc:mysql://localhost:3306/sparksql?createDatabaseIfNotExist=true</value>
+    </property>
+    
+ <property>
+	<name>javax.jdo.option.ConnectionDriverName</name>
+    <value>com.mysql.jdbc.Driver</value>
+  </property>
+  
+  <property>
+		<name>javax.jdo.option.ConnectionUserName</name>
+    	<value>root</value>
+    </property>
+    
+   <property>
+    <name>javax.jdo.option.ConnectionPassword</name>
+    	<value>root</value>
+    </property>
+```
 参考：[https://github.com/apache/hive/blob/master/data/conf/hive-site.xml](https://github.com/apache/hive/blob/master/data/conf/hive-site.xml)
     
 
@@ -227,7 +249,7 @@ hive-site.xml ： sparksql数据库名称
 
 创建表
 
-```
+```hive
 CREATE  TABLE table_name 
   [(col_name data_type [COMMENT col_comment])]
 create table hive_wordcount(context string);
@@ -247,7 +269,7 @@ lateral view explode(): 是把每行记录按照指定分隔符进行拆解
 
 hive ql提交执行以后会生成mr作业，并在yarn上运行
 
-```
+```hive
 create table emp(
 empno int,
 ename string,
@@ -354,7 +376,7 @@ Project [(cast(key#321 as double) * 5.0) AS (CAST(key AS DOUBLE) * CAST((2 + 3) 
 
 ### thriftserver/beeline的使用
 
-1) 启动thriftserver: 默认端口是10000 ，可以修改
+1)   启动thriftserver: 默认端口是10000 ，可以修改
 2）启动beeline
 beeline -u jdbc:hive2://localhost:10000 -n hadoop
 
@@ -372,7 +394,7 @@ beeline -u jdbc:hive2://localhost:14000 -n hadoop
 ### thriftserver和普通的spark-shell/spark-sql有什么区别
 
 1）spark-shell、spark-sql都是一个spark  application；
-2）thriftserver， 不管你启动多少个客户端(beeline/code)，永远都是一个spark application解决了一个数据共享的问题，多个客户端可以共享数据；
+2）thriftserver， 不管你启动多少个客户端(beeline/code)，永远都是一个spark application**解决了一个数据共享的问题，多个客户端可以共享数据；**
 
 注意事项：在使用jdbc开发时，一定要先启动thriftserver
 
@@ -486,17 +508,19 @@ or a data frame in R/Python
 
 - RDD： 
   	java/scala  ==> jvm
-  	python ==> python runtime
+    	python ==> python runtime
 
 - DataFrame:
   	java/scala/python ==> Logic Plan
 
 **DataFrame和RDD互操作的两种方式：**
-1）反射：case class   前提：事先需要知道你的字段、字段类型    
+1）反射：case class   前提：事先需要知道你的字段、字段类型（优先考虑）    
 2）编程：Row 如果第一种情况不能满足你的要求（事先不知道列）
-3) 选型：优先考虑第一种
+Dataset可以认为是DataFrame的一个特例，主要区别是Dataset每一个record存储的是一个强类型值而不是一个Row。因此具有如下三个特点：
 
-
+- DataSet可以在编译时检查类型
+- 并且是面向对象的编程接口。
+- 后面版本DataFrame会继承DataSet，DataFrame是面向Spark SQL的接口。
 
 ```scala
 val rdd = spark.sparkContext.textFile("file:///home/hadoop/data/student.data")
@@ -516,19 +540,23 @@ DF:
 DS:
 	ds.map(line => line.itemid)  compile no
 
-![image-20200519132551718](../image/spark/image-20200519132551718.png)
+<img src="../image/spark/image-20200519132551718.png" alt="image-20200519132551718" style="zoom:50%;" />
 
 #### DataFrame
 
-​		DataFrame也是一个分布式数据容器。然而DataFrame更像传统数据库的二维表格，除了数据以外，还记录数据的结构信息，即schema。同时，与Hive类似，DataFrame也支持嵌套数据类型（struct、array和map）。从API易用性的角度上看，DataFrame API提供的是一套高层的关系操作，比函数式的RDD API要更加友好，门槛更低。
+​		DataFrame也是一个分布式数据容器。然而DataFrame更像传统数据库的二维表格，除了数据以外，还**记录数据的结构信息**，即schema。同时，与Hive类似，DataFrame也支持嵌套数据类型（struct、array和map）。从API易用性的角度上看，DataFrame API提供的是一套高层的关系操作，比函数式的RDD API要更加友好，门槛更低。
 
 ![image-20200603154946241](../image/spark/image-20200603154946241.png)
 
-​		上图直观地体现了DataFrame和RDD的区别。左侧的RDD[Person]虽然以Person为类型参数，但**Spark框架本身不了解Person类的内部结构**。而右侧的DataFrame却提供了详细的结构信息，使得Spark SQL可以清楚地知道该数据集中包含哪些列，每列的名称和类型各是什么。**DataFrame是为数据提供了Schema的视图。**可以把它当做数据库中的一张表来对待，DataFrame也是懒执行的。性能上比RDD要高，主要原因：
+​		上图直观地体现了DataFrame和RDD的区别。左侧的RDD[Person]虽然以Person为类型参数，但**Spark框架本身不了解Person类的内部结构**。而右侧的DataFrame却提供了详细的**结构信息**，使得Spark SQL可以清楚地知道该数据集中包含哪些列，每列的名称和类型各是什么。**DataFrame是为数据提供了Schema的视图。**可以把它当做数据库中的一张表来对待，DataFrame也是懒执行的。性能上比RDD要高，主要原因：
 
 优化的执行计划：查询计划通过`Spark catalyst optimiser`进行优化。
 
 ![image-20200603155509889](../image/spark/image-20200603155509889.png)
+
+​		图中构造了两个DataFrame，将它们join之后又做了一次filter操作。如果原封不动地执行这个执行计划，最终的执行效率是不高的。因为join是一个代价较大的操作，也可能会产生一个较大的数据集。如果我们能将filter下推到 join下方，先对DataFrame进行过滤，再join过滤后的较小的结果集，便可以有效缩短执行时间。而Spark SQL的查询优化器正是这样做的。简而言之，逻辑查询计划优化就是一个利用基于关系代数的等价变换，将高成本的操作替换为低成本操作的过程。
+
+参考：[RDD、DataFrame和DataSet的区别](https://www.jianshu.com/p/c0181667daa0)
 
 ```scala
 // DataFrame API基本操作
@@ -564,7 +592,7 @@ object DataFrameApp {
 
 #### DataFrameCase
 
-```
+```scala
 object DataFrameCase {
   def main(args: Array[String]): Unit = {
     val spark = SparkSession.builder().appName("DataFrameRDDApp").master("local[2]").getOrCreate()
@@ -724,8 +752,6 @@ dfToRDD.collect
 
 
 #### Dataset
-
-只有属性 没有结构
 
 1）是Dataframe API的一个扩展，是Spark最新的数据抽象。
 
@@ -887,11 +913,11 @@ spark.sqlContext.setConf("spark.sql.shuffle.partitions","10")
 
 ​		Spark SQL 能够自动推测 JSON数据集的结构，并将它加载为一个Dataset[Row]. 可以通过SparkSession.read.json()去加载一个 一个JSON 文件。
 
-注意：这个JSON文件不是一个传统的JSON文件，每一行都得是一个JSON串。
+​		注意：这个JSON文件不是一个传统的JSON文件，每一行都得是一个JSON串。
 
 #### 操作MySQL的数据
 
-Spark SQL可以通过JDBC从关系型数据库中读取数据的方式创建DataFrame，通过对DataFrame一系列的计算后，还可以将数据再写回关系型数据库中。
+​		Spark SQL可以通过JDBC从关系型数据库中读取数据的方式创建DataFrame，通过对DataFrame一系列的计算后，还可以将数据再写回关系型数据库中。
 
 **注意:需要将相关的数据库驱动放到spark的类路径下。**
 
@@ -1294,15 +1320,191 @@ val s3RDD = sc.textFile("s3a://bucket/object")
 spark.read.format("text").load("hdfs://path/file")
 spark.read.format("text").load("s3a://bucket/object")
 
-
-
-
-
 val df=spark.read.format("json").load("file:///home/hadoop/app/spark-2.1.0-bin-2.6.0-cdh5.7.0/examples/src/main/resources/people.json")
 
 df.show
 TPC-DS
 spark-packages.org
+
+```
+
+项目实战，主体类
+
+```scala
+package com.wangfulin.log.top
+
+import com.wangfulin.log.dao.StatDAO
+import com.wangfulin.log.model.{DayCityVideoAccessStat, DayVideoAccessStat, DayVideoTrafficsStat}
+import org.apache.spark.sql.expressions.Window
+import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.sql.functions._
+
+import scala.collection.mutable.ListBuffer
+
+/**
+ * TopN统计Spark作业
+ */
+object TopNStatJob {
+
+
+  def main(args: Array[String]) {
+    val spark = SparkSession.builder().appName("TopNStatJob")
+      // 将推算禁用
+      //
+      .config("spark.sql.sources.partitionColumnTypeInference.enabled", "false")
+      .master("local[2]").getOrCreate()
+
+
+    // 读取清洗后的数据内容
+    val accessDF = spark.read.format("parquet").load("file:///Users/wangfulin/bigdata/data/datashare/clean")
+
+    accessDF.printSchema()
+    accessDF.show(false)
+
+    val day = "20170511"
+
+    // 先清空表数据
+    StatDAO.deleteData(day)
+    //最受欢迎的TopN课程
+    videoAccessTopNStat(spark, accessDF, day)
+
+    //按照地市进行统计TopN课程
+    cityAccessTopNStat(spark, accessDF, day)
+
+    //按照流量进行统计
+    videoTrafficsTopNStat(spark, accessDF, day)
+
+    spark.stop()
+  }
+
+  /**
+   * 按照流量进行统计TopN课程
+   */
+  def videoTrafficsTopNStat(spark: SparkSession, accessDF: DataFrame, day: String): Unit = {
+    import spark.implicits._
+    val cityAccessTopNDF = accessDF.filter($"day" === day && $"cmsType" === "video")
+      .groupBy("day", "cmsId").agg(sum("traffic").as("traffics"))
+      .orderBy($"traffics".desc)
+    //.show(false)
+
+    /**
+     * 将统计结果写入到MySQL中
+     */
+    try {
+      cityAccessTopNDF.foreachPartition(partitionOfRecords => {
+        val list = new ListBuffer[DayVideoTrafficsStat]
+
+        partitionOfRecords.foreach(info => {
+          val day = info.getAs[String]("day")
+          val cmsId = info.getAs[Long]("cmsId")
+          val traffics = info.getAs[Long]("traffics")
+          list.append(DayVideoTrafficsStat(day, cmsId, traffics))
+        })
+
+        StatDAO.insertDayVideoTrafficsAccessTopN(list)
+      })
+    } catch {
+      case e: Exception => e.printStackTrace()
+    }
+  }
+
+
+  /**
+   * 按照地市进行统计TopN课程
+   */
+  def cityAccessTopNStat(spark: SparkSession, accessDF: DataFrame, day: String): Unit = {
+    import spark.implicits._
+
+    val cityAccessTopNDF = accessDF.filter($"day" === day && $"cmsType" === "video")
+      .groupBy("day", "city", "cmsId")
+      .agg(count("cmsId").as("times"))
+
+    // cityAccessTopNDF.show(false)
+
+    //Window函数在Spark SQL的使用
+    val top3DF = cityAccessTopNDF.select(
+      cityAccessTopNDF("day"),
+      cityAccessTopNDF("city"),
+      cityAccessTopNDF("cmsId"),
+      cityAccessTopNDF("times"),
+      row_number().over(Window.partitionBy(cityAccessTopNDF("city"))
+        .orderBy(cityAccessTopNDF("times").desc)
+      ).as("times_rank")
+    ).filter("times_rank <= 3") //.show(false) //Top3
+
+    try {
+      top3DF.foreachPartition(partitionOfRecords => {
+        val list = new ListBuffer[DayCityVideoAccessStat]
+
+        partitionOfRecords.foreach(info => {
+          val day = info.getAs[String]("day")
+          val cmsId = info.getAs[Long]("cmsId")
+          val city = info.getAs[String]("city")
+          val times = info.getAs[Long]("times")
+          val timesRank = info.getAs[Int]("times_rank")
+          list.append(DayCityVideoAccessStat(day, cmsId, city, times, timesRank))
+        })
+        StatDAO.insertDayCityVideoAccessTopN(list)
+      })
+    } catch {
+      case e: Exception => e.printStackTrace()
+    }
+
+  }
+
+
+  /**
+   * 最受欢迎的TopN课程
+   */
+  def videoAccessTopNStat(spark: SparkSession, accessDF: DataFrame, day: String): Unit = {
+    /**
+     * 方法一：使用DataFrame的方式进行统计
+     */
+    import spark.implicits._
+
+    val videoAccessTopNDF = accessDF.filter($"day" === day && $"cmsType" === "video")
+      .groupBy("day", "cmsId")
+      .agg(count("cmsId").as("times")).orderBy(col("times").desc)
+
+    videoAccessTopNDF.show(false)
+
+    /**
+     * 使用SQL的方式进行统计
+     */
+    //    accessDF.createOrReplaceTempView("access_logs")
+    //    val videoAccessTopNDF = spark.sql("select day,cmsId, count(1) as times from access_logs " +
+    //      "where day='20170511' and cmsType='video' " +
+    //      "group by day,cmsId order by times desc")
+
+    /**
+     * 将统计结果写入到MySQL中
+     */
+    try {
+      // 把每个partition的内容加载进来，添加到list里面去
+      videoAccessTopNDF.foreachPartition(partitionOfRecords => {
+        val list = new ListBuffer[DayVideoAccessStat]
+
+        partitionOfRecords.foreach(info => {
+          val day = info.getAs[String]("day")
+          val cmsId = info.getAs[Long]("cmsId")
+          val times = info.getAs[Long]("times")
+
+          /**
+           * 不建议大家在此处进行数据库的数据插入
+           */
+
+          list.append(DayVideoAccessStat(day, cmsId, times))
+        })
+
+        StatDAO.insertDayVideoAccessTopN(list)
+      })
+    } catch {
+      case e: Exception => e.printStackTrace()
+    }
+
+  }
+
+}
 
 ```
 
