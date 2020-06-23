@@ -24,6 +24,8 @@ public class DistributeClient {
 
         DistributeClient client = new DistributeClient();
 
+
+
         // 1 获取zookeeper集群连接
         client.getConnect();
 
@@ -33,7 +35,15 @@ public class DistributeClient {
         // 3 业务逻辑处理
         client.business();
 
+
+
+
+
+
     }
+
+
+
 
     private void business() throws InterruptedException {
         Thread.sleep(Long.MAX_VALUE);

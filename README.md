@@ -10,7 +10,7 @@
 
 ## 基础
 
-- [java基础](https://github.com/wangfulin7/wangfulin7-notes/blob/master/2019-08-18-JAVA%E5%9F%BA%E7%A1%80.md)
+- [java基础](./JAVA基础/JAVA基础.md)
 
 ## 并发编程
 
