@@ -354,7 +354,7 @@ location '/user/hive/warehouse/student2'; # 存储地址
 
 ```sql
 ## 部门表
-create external table if not exists default.dept( 
+create external table if not exists dept( 
   deptno int,
   dname string,
   loc int
@@ -362,7 +362,7 @@ create external table if not exists default.dept(
 row format delimited fields terminated by '\t';
 
 ## 员工表
-create external table if not exists default.emp (
+create external table if not exists emp (
   empno int,
   ename string,
   job string,
@@ -371,9 +371,10 @@ create external table if not exists default.emp (
   sal double,
   deptno int)
 row format delimited fields terminated by '\t';
-```
 
 ```
+
+```sql
 ## 导入数据
 load data local inpath '/Users/wangfulin/bigdata/data/hive/dept.txt' into table default.dept;
 load data local inpath '/Users/wangfulin/bigdata/data/hive/emp.txt' into table default.emp;

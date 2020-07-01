@@ -102,7 +102,13 @@
 - 尚硅谷教育
 - 慕课网
 
+### Hive
 
+[Hive](./docs/hive/Hive.md)
+
+主要来源：
+
+- 尚硅谷教育
 
 Zookeeper
 
@@ -114,3 +120,5 @@ Zookeeper
 
 ---
 
+CDH相关的软件下载地址：http://archive.cloudera.com/cdh5/cdh/5/
+cdh-5.7.0
