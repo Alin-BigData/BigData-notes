@@ -2,7 +2,69 @@
 
 [toc]
 
-## wordCount执行过程
+## YARN的资源管理和调度
+
+​		YARN 的架构是典型的主从架构，主节点是 ResourceManger。所有的资源的空闲和使用情况都由 ResourceManager 管理。ResourceManager 也负责监控任务的执行，从节点是 NodeManager，主要**负责管理 Container 生命周期**，监控资源使用情况等 ，Container 是 YARN 的资源表示模型，Task 是计算框架的计算任务，会运行在 Container 中，ApplicationMaster 可以暂时认为是二级调度器，比较特殊的是它同样运行在 Container 中。
+
+![img](../../images/spark/Ciqah16YH9KAdHEkAAElCfq3T6A246.png)
+
+YARN 启动一个 MapReduce 作业的流程，如图所示：
+
+![img](../../images/spark/CgoCgV6YH9OACrrTAAEc2OWVHZo968.png)
+
+第 1 步：客户端向 ResourceManager 提交自己的应用，这里的应用就是指 MapReduce 作业。
+
+第 2 步：ResourceManager 向 NodeManager 发出指令，为该应用启动第一个 Container，并在其中启动 ApplicationMaster。
+
+第 3 步：ApplicationMaster 向 ResourceManager 注册。
+
+第 4 步：ApplicationMaster 采用轮询的方式向 ResourceManager 的 YARN Scheduler 申领资源。
+
+第 5 步：当 ApplicationMaster 申领到资源后（其实是获取到了空闲节点的信息），便会与对应 NodeManager 通信，请求启动计算任务。
+
+第 6 步：NodeManager 会根据资源量大小、所需的运行环境，在 Container 中启动任务。
+
+第 7 步：各个任务向 ApplicationMaster 汇报自己的状态和进度，以便让 ApplicationMaster 掌握各个任务的执行情况。
+
+第 8 步：应用程序运行完成后，ApplicationMaster 向 ResourceManager 注销并关闭自己。
+
+​		Spark 与 MapReduce 相比，是一种 DAG 计算框架，包含一系列的计算任务，比较特殊，所以 Spark 自己实现了一个集中式调度器  Driver，用来调用作业内部的计算任务。申请到的资源可以看成是申请分区资源，在该分区内，所有资源由 Driver 全权使用，以客户端方式提交的 Spark on Yarn 这种方式可以看成是 Driver 首先在资源管理和调度系统中注册为框架调度器（二级调度器），接收到需要得资源后，再开始进行作业调度。
+
+## Spark 数据处理与分析场景
+
+![sp04.png](../../images/spark/Cgq2xl6epYOAHr6XAAEI6QEacDY394.png)
+
+
+
+## Spark 架构
+
+在运行时，Driver 是主节点，Executor 是从节点
+
+![image-20200702075212941](../../images/spark/image-20200702075212941.png)
+
+​		在 Spark 的架构中，Driver 主要负责作业调度工作，Executor 主要负责执行具体的作业计算任务，Driver 中的 SparkSession 组件，是 Spark 2.0 引入的一个新的组件，SparkContext、SqlContext、HiveContext 都是 SparkSession 的成员变量。
+
+​		因此，用户编写的 Spark 代码是从新建 SparkSession 开始的。其中 SparkContext 的作用是连接用户编写的代码与运行作业调度以及任务分发的代码。当用户提交作业启动一个 Driver 时，会通过 SparkContext 向集群发送命令，Executor 会遵照指令执行任务。一旦整个执行过程完成，Driver 就会结束整个作业。
+
+![2.png](../../images/spark/CgoCgV6n3mqAQFOkAAJMBAucdcc928.png)
+
+- Driver 会根据用户编写的代码生成一个计算任务的**有向无环图**（Directed Acyclic Graph，DAG），这个有向无环图是 Spark 区别 Hadoop MapReduce 的重要特征；
+- 接着，DAG 会根据 RDD（弹性分布式数据集，图中第 1 根虚线和第 2 根虚线中间的圆角方框）之间的依赖关系被 DAG Scheduler 切分成由 Task 组成的 Stage，这里的 Task 就是我们所说的计算任务，Stage 它表示的是一个计算任务的集合；
+- 最后 TaskScheduler 会通过 ClusterManager 将 Task 调度到 Executor 上执行。
+
+## Spark 抽象
+
+Driver 会根据用户的代码生成一个有向无环图。下面这张图就是根据用户逻辑生成的一个有向无环图。
+
+![3.png](../../images/spark/Ciqah16n3paAGGPiAAIEOV_nCLg734.png)
+
+​		大概反推出计算逻辑：A 和 C 都是两张表，在分别进行分组聚合和筛选的操作后，做了一次 join 操作。
+
+​		在上图中，灰色的方框就是我们所说的分区（partition），它和计算任务是一一对应的，也就是说，**有多少个分区，就有多少个计算任务**，显然的，**一个作业，会有多个计算任务**，这也是分布式计算的意义所在，**可以通过设置分区数量来控制每个计算任务的计算量**。在 DAG 中，**每个计算任务的输入就是一个分区，一些相关的计算任务所构成的任务集合可以被看成一个 Stage**，这里"相关"指的是某个标准。**RDD 则是分区的集合**（图中 A、B、C、D、E），用户只需要操作 RDD 就可以构建出整个 DAG，从某种意义上来说，它就是为了掩盖上面的概念而存在的。
+
+​		一个 Executor 同时只能执行一个计算任务，但一个 Worker（物理节点）上可以同时运行多个 Executor。Executor 的数量决定了同时处理任务的数量，一般来说，分区数远大于 Executor 数量才是合理的。所以同一个作业，在计算逻辑不变的情况下，分区数和 Executor 的数量很大程度上决定了作业运行的时间。
+
+## WordCount执行过程
 
 数据流分析：
 
@@ -36,17 +98,22 @@ RDD将数据处理的逻辑进行封装
 
 ![image-20200526134243720](../../images/spark/image-20200526134243720.png)
 
-​		RDD（Resilient Distributed Dataset）叫做弹性分布式数据集，是Spark中最基本的数据抽象。代码中是一个抽象类，它代表一个不可变、可分区、里面的元素可并行计算的集合。
+​		RDD（Resilient Distributed Dataset）叫做弹性分布式数据集，是Spark中最基本的数据抽象。代码中是一个抽象类，它代表一个**不可变、可分区、里面的元素可并行计算的集合**。不可变决定了它是只读的，所以RDD在经过变换产生新的RDD时，原有的RDD不会改变。
 
 ​		移动不如计算：优先位置，将计算移动到数据区。
 
+弹性主要表现在两个方面：
 
+- 在对出错的情况下，Spark能通过RDD之间的依赖关系恢复任意出错的RDD
+- 经过转换算子处理时，RDD中的分区数以及分区所在的位置随时都可能改变。
+
+![图片1.png](../../images/spark/Ciqc1F6qfhyAEvFNAAIRggB-Gcs425.png)
 
 ### RDD的属性
 
 1) 一组分区（Partition），即数据集的基本组成单位;
 
-2) 一个计算每个分区的函数;
+2) 一个计算每个分区的函数（算子）;
 
 3) RDD之间的依赖关系;
 
@@ -116,14 +183,88 @@ makeRDD底层使用的是parallelize
 
 如：
 
+hdfs：
+
 ```scala
 scala> val rdd2= sc.textFile("hdfs://hadoop102:9000/RELEASE")
 rdd2: org.apache.spark.rdd.RDD[String] = hdfs:// hadoop102:9000/RELEASE MapPartitionsRDD[4] at textFile at <console>:24
 ```
 
-读取文件时，传递的分区参数为最小分区数，但是不一定是这个分区数，取决于hadoop读取文件时，分片规则
+​		读取文件时，传递的分区参数为最小分区数，但是不一定是这个分区数，取决于hadoop读取文件时，分片规则
 
+jdbc
 
+```scala
+//val spark: SparkSession = .......
+val lowerBound = 1
+val upperBound = 1000
+val numPartition = 10
+val rdd = new JdbcRDD(spark.sparkcontext,() => {
+       Class.forName("com.mysql.jdbc.Driver").newInstance()
+       DriverManager.getConnection("jdbc:mysql://localhost:3306/db", "root", "123456")
+   },
+   "SELECT content FROM mysqltable WHERE ID >= ? AND ID <= ?",
+   lowerBound, 
+   upperBound, 
+   numPartition,
+   r => r.getString(1)
+)
+
+```
+
+​		从代码可以看出，这种方式的原理是利用多个 Executor 同时查询互不交叉的数据范围，从而达到并行抽取的目的。但是这种方式的抽取性能受限于 MySQL 的并发读性能，单纯提高 Executor 的数量到某一阈值后，再提升对性能影响不大。
+
+hBase:
+
+```scala
+//val spark: SparkSession = .......
+val sc = spark.sparkcontext
+val tablename = "your_hbasetable"
+val conf = HBaseConfiguration.create()
+conf.set("hbase.zookeeper.quorum", "zk1,zk2,zk3")
+conf.set("hbase.zookeeper.property.clientPort", "2181")
+conf.set(TableInputFormat.INPUT_TABLE, tablename)
+val rdd= sc.newAPIHadoopRDD(conf, classOf[TableInputFormat],
+classOf[org.apache.hadoop.hbase.io.ImmutableBytesWritable],
+classOf[org.apache.hadoop.hbase.client.Result]) 
+// 利用HBase API解析出行键与列值
+rdd_three.foreach{case (_,result) => {
+    val rowkey = Bytes.toString(result.getRow)
+    val value1 = Bytes.toString(result.getValue("cf".getBytes,"c1".getBytes))
+}
+```
+
+### 算子
+
+​		RDD 算子主要分为两类，一类为转换（transform）算子，一类为行动（action）算子，转换算子主要负责改变 RDD 中数据、切分 RDD 中数据、过滤掉某些数据等，并按照一定顺序组合。Spark 会将转换算子放入一个计算的有向无环图中，并不立刻执行，当 Driver 请求某些数据时，才会真正提交作业并触发计算，而行动算子就会触发 Driver 请求数据。这种机制与函数式编程思想的惰性求值类似。**这样设计的原因首先是避免无谓的计算开销，更重要的是 Spark 可以了解所有执行的算子，从而设定并优化执行计划。**
+
+RDD 转换算子大概有 20~30 多个，按照 DAG 中分区与分区之间的映射关系来分组，有如下 3 类：
+
+- 一对一，如 map；
+
+- 多对一，如 union；
+
+- 多对多，如 groupByKey。
+
+而按照 RDD 的结构可以分为两种：
+
+- Value 型 RDD；
+
+- Key-Value 型 RDD（PairRDD）。
+
+按照转换算子的用途，我将其分为以下 4 类：
+
+- 通用类；
+
+- 数学/统计类；
+
+- 集合论与关系类；
+
+- 数据结构类。
+
+​		通常两个功能相似的算子，如 groupBy 与 groupByKey，底层都是先将 Value 型 RDD 转换成 Key Value 型 RDD，再直接利用 Key Value 型 RDD 完成转换功能。
+
+​		几乎所有的算子，都可以用 map、reduce、filter 这三个算子通过组合进行实现。
 
 ### RDD的转换
 
@@ -149,6 +290,14 @@ _*i的计算在Executor中，需要在网络中传输这个i，因此**需要考
 #### Value类型
 
 ##### map(func)案例
+
+```scala
+def map[U: ClassTag](f: T => U): RDD[U]
+```
+
+它的作用是将原RDD分区中T类型的数据元素转换为U类型，并返回一个新的RDD。 
+
+![1.png](../../images/spark/Ciqc1F6z5w-AWuVFAACbWVwbDPY977.png)
 
 ```scala
     // map算子
@@ -266,7 +415,13 @@ _*i的计算在Executor中，需要在网络中传输这个i，因此**需要考
 
 ##### filter(func) 案例
 
-​		过滤。
+```scala
+def filter(f: T => Boolean): RDD[T]
+```
+
+​		filter算子可以通过用户自定义规则过滤掉某些数据，f 返回值为 true 则保留，false 则丢弃，如图：
+
+![2.png](../../images/spark/Ciqc1F6z5xmAKSzNAACXXW-14jQ469.png)
 
 ```scala
     // filter算子，数据过滤
@@ -274,7 +429,7 @@ _*i的计算在Executor中，需要在网络中传输这个i，因此**需要考
     filterRDD.collect().foreach(println)
 ```
 
-
+​		该算子作用之后，可能会造成大量零碎分区，不利于后面计算过程，需要在这之前进行合并。
 
 ##### sample(withReplacement, fraction, seed) 案例
 
@@ -402,7 +557,15 @@ sortByRdd.collect().foreach(println)
 
 ##### groupByKey案例
 
-​		groupByKey也是对每个key进行操作，但只生成一个sequence（序列）。
+```scala
+def groupByKey(): RDD[(K, Iterable[V])]
+```
+
+​	它默认按照哈希分区器进行分发，将同一个键的数据元素放入到一个迭代器中供后面的汇总操作做准备，它的可选参数分区数、分区器，如下图：	
+
+![4.png](../../images/spark/CgqCHl6z5ymATlNFAAC9K6DtPBw301.png)	
+
+​	groupByKey也是对每个key进行操作，但只生成一个sequence（序列）。
 
 ```scala
 // groupByKey算子
@@ -414,7 +577,15 @@ wordPairsRDD.groupByKey().map(t=>(t._1,t._2.sum))
 
 ##### reduceByKey(func, [numTasks]) 案例
 
+```scala
+def reduceByKey(func: (V, V) => V): RDD[(K, V)]
+```
+
 ​		在一个(K,V)的RDD上调用，返回一个(K,V)的RDD，使用指定的reduce函数，将相同key的值聚合到一起，reduce任务的个数可以通过第二个可选的参数来设置。
+
+​		reduceByKey 算子执行的是归约操作，针对相同键的数据元素两两进行合并。在合并之前，reduceByKey 算子需要将相同键的元素分发到一个分区中去，分发规则可以自定义，分发的分区数量也可以自定义，所以该算子还可以接收分区器或者分区数作为参数，分区器在没有指定时，采用的是 RDD 内部的哈希分区器，如下图：
+
+![3.png](../../images/spark/CgqCHl6z5yGATtyRAAC4OV7IC64165.png)
 
 ```scala
 // reduceByKey算子
@@ -565,7 +736,15 @@ input.cogroup(input2).collect().foreach(println)
 
 
 
-#### Action
+#### 行动算子
+
+​		行动算子从功能上来说作为一个触发器，**会触发提交整个作业并开始执行。**从代码上来说，它与转换算子的最大不同之处在于：转换算子返回的还是 RDD，行动算子返回的是非 RDD 类型的值，如整数，或者根本没有返回值。
+
+​		行动算子可以分为 Driver 和分布式两类。
+
+- Driver：这种算子返回值通常为 Driver 内部的内存变量，如 collect、count、countByKey 等。这种算子会在远端 Executor 执行计算完成后将结果数据传回 Driver。这种算子的缺点是，如果返回的数据太大，很容易会突破 Driver 内存限制，因此使用这种算子作为作业结束需要谨慎，主要还是用于调试与开发场景。
+
+- 分布式：与前一类算子将结果回传到 Driver 不同，这类算子会在集群中的节点上“就地”分布式执行，如 saveAsTextFile。这是一种最常用的分布式行动算子。
 
 #### reduce(func)案例
 
@@ -680,6 +859,8 @@ RDD任务切分中间分为：Application、Job、Stage和Task
 
 #### RDD缓存
 
+​		Spark 缓存技术是加速 Spark 作业执行的关键技术之一，尤其是在迭代计算的场景，效果非常好。
+
 ​		RDD通过persist方法或cache方法可以将前面的计算结果缓存，默认情况下 persist() 会把数据以序列化的形式缓存在 JVM 的堆空间中。 
 
 ​		但是并不是这两个方法被调用时立即缓存，而是**触发后面的action时，该RDD将会被缓存在计算节点的内存中，并供后面重用。**
@@ -695,6 +876,8 @@ RDD任务切分中间分为：Application、Job、Stage和Task
 ![img](../../images/spark/wpslDlJmG.png)
 
 ​		缓存有可能丢失，或者存储在内存的数据由于内存不足而被删除，RDD的缓存容错机制保证了即使缓存丢失也能保证计算的正确执行。通过基于RDD的一系列转换，丢失的数据会被重算，由于RDD的各个Partition是相对独立的，因此只需要计算丢失的部分即可，并不需要重算全部Partition。
+
+​		如果内存足够大，使用 MEMORY_ONLY 无疑是性能最好的选择，想要节省点空间的话，可以采取 MEMORY_ONLY_SER，可以序列化对象使其所占空间减少一点。DISK是在重算的代价特别昂贵时的不得已的选择。MEMORY_ONLY_2 与 MEMORY_AND_DISK_2 拥有最佳的可用性，但是会消耗额外的存储空间。
 
 #### RDD CheckPoint
 
@@ -784,6 +967,13 @@ RDD：分布式数据集
 
 累加器：分布式只写共享变量
 
+共享变量是 Spark 中进阶特性之一，一共有两种：
+
+- 广播变量；
+- 累加器。
+
+​        在 Spark 作业中，用户编写的高阶函数会在集群中的 Executor 里执行，这些 Executor 可能会用到相同的变量，这些变量被复制到每个 Executor 中，而 Executor 对变量的更新不会传回 Driver。
+
 ### 累加器
 
 （只写共享变量）
@@ -797,6 +987,14 @@ RDD：分布式数据集
 使用累加器之后：
 
 <img src="../../images/spark/image-20200602091656089.png" alt="image-20200602091656089" style="zoom:67%;" />
+
+Spark 内置的累加器有如下几种。
+
+- LongAccumulator：长整型累加器，用于求和、计数、求均值的 64 位整数。
+- DoubleAccumulator：双精度型累加器，用于求和、计数、求均值的双精度浮点数。
+- CollectionAccumulator[T]：集合型累加器，可以用来收集所需信息的集合。
+
+所有这些累加器都是继承自 AccumulatorV2。
 
 ##### 自定义累加器
 
@@ -864,6 +1062,85 @@ val logAccumulator = new LogAccumulator
 sc.register(logAccumulator)
 ```
 
+例：
+
+![图片2.png](../../images/spark/CgqCHl69BxaAR5emAAAg3H3pKGc444.png)
+
+这个表只有两列，需要统计 A 列与 B 列的汇总值。下面来看看根据上面的逻辑如何实现一个自定义累加器。代码如下：
+
+```scala
+	import org.apache.spark.util.AccumulatorV2
+	import org.apache.spark.SparkConf
+	import org.apache.spark.SparkContext
+	import org.apache.spark.SparkConf
+	 
+	// 构造一个保存累加结果的类
+	case class SumAandB(A: Long, B: Long)
+	 
+	class FieldAccumulator extends AccumulatorV2[SumAandB,SumAandB] {
+	
+      private var A:Long = 0L
+      private var B:Long = 0L
+	    // 如果A和B同时为0，则累加器值为0
+	    override def isZero: Boolean = A == 0 && B == 0L
+	    // 复制一个累加器
+	    override def copy(): FieldAccumulator = {
+	        val newAcc = new FieldAccumulator
+	        newAcc.A = this.A
+	        newAcc.B = this.B
+	        newAcc
+	    }
+	    // 重置累加器为0
+	    override def reset(): Unit = { A = 0 ; B = 0L }
+	    // 用累加器记录汇总结果
+	    override def add(v: SumAandB): Unit = {
+	        A += v.A
+	        B += v.B
+	    }
+	    // 合并两个累加器
+	    override def merge(other: AccumulatorV2[SumAandB, SumAandB]): Unit = {
+	        other match {
+	        case o: FieldAccumulator => {
+	            A += o.A
+	            B += o.B}
+	        case _ =>
+	        }
+	    }
+	    // 当Spark调用时返回结果
+	    override def value: SumAandB = SumAandB(A,B)
+	}
+
+```
+
+调用
+
+```scala
+package com.spark.examples.rdd
+ 
+import org.apache.spark.SparkConf
+import org.apache.spark.SparkContext
+ 
+class Driver extends App{
+
+  val conf = new SparkConf
+  val sc = new SparkContext(conf)
+  val filedAcc = new FieldAccumulator
+  sc.register(filedAcc, " filedAcc ")
+  // 过滤掉表头
+  val tableRDD = sc.textFile("table.csv").filter(_.split(",")(0) != "A")
+  tableRDD.map(x => {
+     val fields = x.split(",")
+     val a = fields(1).toInt
+     val b = fields(2).toLong
+     filedAcc.add(SumAandB (a, b))
+     x
+  }).count
+}
+
+```
+
+
+
 ### 广播变量
 
 （只读共享变量）
@@ -872,7 +1149,126 @@ sc.register(logAccumulator)
 
 变量只会被发到各个节点一次，应作为只读值处理(修改这个值不会影响到别的节点)。
 
-### SparkCore总结
+​		Spark 广播机制运作方式是这样的：Driver 将已序列化的数据切分成小块，然后将其存储在自己的块管理器 BlockManager 中，当 Executor 开始运行时，每个 Executor 首先从自己的内部块管理器中试图获取广播变量，如果以前广播过，那么直接使用；如果没有，Executor 就会从 Driver 或者其他可用的 Executor 去拉取数据块。Executor 采用的是通过 HTTP 连接去拉取数据，类似于 BitTorrent 点对点传输。这样的方式更具扩展性，避免了所有 Executor 都去向 Driver 请求数据而造成 Driver 故障。一旦拿到数据块，就会放到自己的块管理器中。供自己和其他需要拉取的 Executor 使用。这就很好地防止了 Driver 单点的性能瓶颈，如下图所示。
+
+![图片1.png](../../images/spark/CgqCHl69BwmAP2B7AAGvkqEmVkk327.png)
+
+```scala
+scala> val rdd_one = sc.parallelize(Seq(1,2,3))
+rdd_one: org.apache.spark.rdd.RDD[Int] = ParallelCollectionRDD[101] at
+parallelize at <console>:25
+    scala> val i = 5
+    i: Int = 5
+scala> val bi = sc.broadcast(i)
+bi: org.apache.spark.broadcast.Broadcast[Int] = Broadcast(147)
+scala> bi.value
+res166: Int = 5
+scala> rdd_one.take(5)
+res164: Array[Int] = Array(1, 2, 3)
+scala> rdd_one.map(j => j + bi.value).take(5)
+res165: Array[Int] = Array(6, 7, 8)
+
+```
+
+广播变量会持续占用内存，当我们不需要的时候，可以用 unpersist 算子将其移除，这时，如果计算任务又用到广播变量，那么就会重新拉取数据，如下：
+
+```scala
+    ...
+scala> val rdd_one = sc.parallelize(Seq(1,2,3))
+rdd_one: org.apache.spark.rdd.RDD[Int] = ParallelCollectionRDD[101] at
+parallelize at <console>:25
+scala> val k = 5
+k: Int = 5
+scala> val bk = sc.broadcast(k)
+bk: org.apache.spark.broadcast.Broadcast[Int] = Broadcast(163)
+scala> rdd_one.map(j => j + bk.value).take(5)
+res184: Array[Int] = Array(6, 7, 8)
+scala> bk.unpersist
+scala> rdd_one.map(j => j + bk.value).take(5)
+res186: Array[Int] = Array(6, 7, 8)
+
+```
+
+​		还可以使用 destroy 方法彻底销毁广播变量，调用该方法后，如果计算任务中又用到广播变量，则会抛出异常。
+
+​		广播变量在一定数据量范围内可以有效地使作业避免 Shuffle，使计算尽可能本地运行，Spark 的 Map 端连接操作就是用广播变量实现的。
+
+例：
+
+	表 A：校验码，内容
+
+也就是说，我们需要根据校验码的不同，对内容采取不同规则的校验，而检验码与校验规则的映射则存储在另外一个数据库：
+
+```
+表 B：校验码，规则
+```
+
+这样，情况就比较清楚了，如果不考虑广播变量，我们有这么两种做法：
+
+1. 直接使用 map 算子，在 map 算子中的自定义函数中去查询数据库，那么有多少行，就要查询多少次数据库，这样性能非常差。
+2. 先将表 B 查出来转化为 RDD，使用 join 算子进行连接操作后，再使用 map 算子进行处理，这样做性能会比前一种方式好很多，但是会引起大量的 Shuffle 操作，对资源消耗不小。
+
+考虑广播变量。相当于先将小表进行广播，广播到每个 Executor 的内存中，供 map 函数使用，这就避免了 Shuffle，虽然语义上还是 join（小表放内存），但无论是资源消耗还是执行时间，都要远优于前面两种方式。
+
+
+
+## Shuffle原理
+
+​		Shuffle 一般被翻译为数据混洗，是类 MapReduce 分布式计算框架独有的机制，也是这类分布式计算框架最重要的执行机制。
+
+- 逻辑层面；
+- 物理层面。
+
+#### 逻辑层面
+
+​		血统的表现形式主要分为宽依赖（wide dependency）与窄依赖（narrow dependency），如下图所示：
+
+![图片1.png](../../images/spark/CgqCHl7DnZCATfLcAAEWt4pokjU626.png)
+
+​		窄依赖的准确定义是：子 RDD 中的分区与父 RDD 中的分区只存在一对一的映射关系，而宽依赖则是子 RDD 中的分区与父 RDD 中的分区存在一对多的映射关系，那么从这个角度来说，map、 filter、 union 等就是窄依赖，而 groupByKey、 coGroup 就是典型的宽依赖。
+
+​		**宽依赖还有个名字，叫 Shuffle 依赖，也就是说宽依赖必然会发生 Shuffle 操作**，在前面也提到过 **Shuffle 也是划分 Stage 的依据**。而窄依赖由于不需要发生 Shuffle，所有计算都是在分区所在节点完成，它类似于 MapReduce 中的 ChainMapper。所以说，**在你自己的 DAG 中，如果你选取的算子形成了宽依赖，那么就一定会触发 Shuffle**。
+
+​		所以用户可以在计算过程中，适时调用 RDD 的 checkpoint 方法，保存当前算好的中间结果，这样依赖链就会大大缩短。**RDD 的血统机制就是 RDD 的容错机制。**
+
+在 Spark 应用执行的过程中，可能会遇到以下几种失败的情况：
+
+- Driver 报错；
+- Executor 报错；
+- Task 执行失败。
+
+​        Driver 执行失败是 Spark 应用最严重的一种情况，标志整个作业彻底执行失败，需要开发人员手动重启 Driver；Executor 报错通常是因为 Executor 所在的机器故障导致，这时 Driver 会将执行失败的 Task 调度到另一个 Executor 继续执行，重新执行的 Task 会根据 RDD 的依赖关系继续计算，并将报错的 Executor 从可用 Executor 的列表中去掉；Spark 会对执行失败的 Task 进行重试，重试 3 次后若仍然失败会导致整个作业失败。在这个过程中，Task 的数据恢复和重新执行都用到了 RDD 的血统机制。
+
+#### 物理层面
+
+​		很多算子都会引起 RDD 中的数据进行重分区，新的分区被创建，旧的分区被合并或者被打碎，在重分区的过程中，如果数据发生了跨节点移动，就被称为 Shuffle。**Shuffle 体现了从函数式编程接口到分布式计算框架的实现。**Spark 对 Shuffle 的实现方式有两种：Hash Shuffle 与 Sort-based Shuffle
+
+##### Hash Shuffle
+
+​		Shuffle 的过程一般分为两个部分：Shuffle Write 和 Shuffle Fetch，前者是 Map 任务划分分区、输出中间结果，而后者则是 Reduce 任务获取到的这些中间结果。Hash Shuffle 的过程如下图所示：
+
+![图片5.png](../../images/spark/Ciqc1F7DnbmAAR5LAAS9bfIkvrg055.png)
+
+​		在图中，Shuffle Write 发生在一个节点上，该节点用来执行 Shuffle 任务的 CPU 核数为 2，每个核可以同时执行两个任务，每个任务输出的分区数与 Reducer（这里的 Reducer 指的是 Reduce 端的 Executor）数相同，即为 3，每个分区都有一个缓冲区（bucket）用来接收结果，每个缓冲区的大小由配置 spark.shuffle.file.buffer.kb 决定。这样每个缓冲区写满后，就会输出到一个文件段（filesegment），而 Reducer 就会去相应的节点拉取文件。这样的实现很简单，但是问题也很明显。主要有两个：
+
+- 生成的中间结果文件数太大。理论上，每个 Shuffle 任务输出会产生 R 个文件（ R为Reducer 的个数），而 Shuffle 任务的个数往往由 Map 任务个数 M 决定，所以总共会生成 M * R 个中间结果文件，而往往在一个作业中 M 和 R 都是很大的数字，在大型作业中，经常会出现文件句柄数突破操作系统限制。
+- 缓冲区占用内存空间过大。单节点在执行 Shuffle 任务时缓存区大小消耗为 m * R * spark.shuffle.file.buffer.kb，m 为该节点运行的 Shuffle 任务数，如果一个核可以执行一个任务，m 就与 CPU 核数相等。这对于动辄有 32、64 物理核的服务器来说，是比不小的内存开销。
+
+为了解决第一个问题， Spark 推出过 **File Consolidation** 机制，旨在通过共用输出文件以降低文件数，如下图所示：
+
+​		每当 Shuffle 任务输出时，**同一个 CPU 核心处理的 Map 任务的中间结果会输出到同分区的一个文件中，然后 Reducer 只需一次性将整个文件拿到即可。**这样，Shuffle 产生的文件数为 C（CPU 核数）* R。 Spark 的 FileConsolidation 机制默认开启，可以通过 spark.shuffle.consolidateFiles 配置项进行配置。
+
+##### Sort-based Shuffle
+
+Sort-based Shuffle，才真正解决了 Shuffle 的问题，再加上 Tungsten 计划的优化， Spark 的 Sort-based Shuffle 比 MapReduce 的 Sort-based Shuffle 青出于蓝。如下图所示：
+
+![图片7.png](../../images/spark/CgqCHl7Dnc2AV9OgAAL1Z7bbIkE547.png)
+
+​		每个 Map 任务会最后只会输出两个文件（其中一个是索引文件），其中间过程采用的是与 MapReduce 一样的归并排序，但是会用索引文件记录每个分区的偏移量，输出完成后，Reducer 会根据索引文件得到属于自己的分区，在这种情况下，Shuffle 产生的中间结果文件数为 2 * M（M 为 Map 任务数）。
+
+​		在基于排序的 Shuffle 中， Spark 还提供了一种折中方案——Bypass Sort-based Shuffle，当 Reduce 任务小于 spark.shuffle.sort.bypassMergeThreshold 配置（默认 200）时，Spark Shuffle 开始按照 Hash Shuffle 的方式处理数据，而不用进行归并排序，只是在 Shuffle Write 步骤的最后，将其合并为 1 个文件，并生成索引文件。这样实际上还是会生成大量的中间文件，只是最后合并为 1 个文件并省去排序所带来的开销，该方案的准确说法是 Hash Shuffle 的Shuffle Fetch 优化版。
+
+## SparkCore总结
 
 ![Spark Core 总结](../../images/spark/Spark Core 总结.png)
 
