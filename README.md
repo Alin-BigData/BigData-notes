@@ -62,6 +62,10 @@
 - [极客时间-设计模式之美](https://time.geekbang.org/column/intro/100039001)
 - [java_my_life](https://www.cnblogs.com/java-my-life/)
 
+## 算法
+
+[leetcode](./docs/算法/leetcode目录.md)
+
 
 ## 大数据
 
