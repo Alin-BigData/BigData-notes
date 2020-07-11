@@ -1,10 +1,18 @@
-## Apache Flink 介绍
+# Flink基础
 
-来源：[Flink 从 0 到 1 学习 —— Apache Flink 介绍](http://www.54tianzhisheng.cn/2018/10/13/flink-introduction/)
+来源：
+
+[Flink 从 0 到 1 学习 —— Apache Flink 介绍](http://www.54tianzhisheng.cn/2018/10/13/flink-introduction/)
+
+拉勾教育
+
+
 
 [toc]
 
-​		Flink 项目的理念是:“Apache Flink 是为分布式、高性能、随时可用以及准确的流处理应用程序打造的开源流处理框架”。
+## Apache Flink 介绍
+
+​	Flink 项目的理念是:“Apache Flink 是为分布式、高性能、随时可用以及准确的流处理应用程序打造的开源流处理框架”。
 
 ### Flink 的重要特点
 
@@ -191,6 +199,18 @@ Flink 中的执行图可以分成四层:StreamGraph -> JobGraph -> ExecutionGrap
 - **物理执行图**:JobManager 根据 ExecutionGraph 对 Job 进行调度后，在各个 TaskManager 上部署 Task 后形成的“图”，并不是一个具体的数据结构。
 
 ![image-20200625104840302](/Users/wangfulin/github/github-note/images/flink/image-20200625104840302.png)
+
+##### 窗口和时间
+
+窗口和时间是 Flink 中的核心概念之一。Flink 支持了多种窗口模型比如滚动窗口（Tumbling Window）、滑动窗口（Sliding Window）及会话窗口（Session Window）等。
+
+![img](/Users/wangfulin/github/github-note/images/flink/Ciqah16WkLOAd3yEAACExkPjYaQ952.png)
+
+​		同时，Flink 支持了事件时间（Event Time）、摄取时间（Ingestion Time）和处理时间（Processing Time）三种时间语义用来满足实际生产中对于时间的特殊需求。
+
+![img](/Users/wangfulin/github/github-note/images/flink/CgoCgV6WkL6AH1phAAFLHTxD7E8180.png)
+
+​		Flink 自身还支持了有状态的算子操作、容错机制、Checkpoint、Exactly-once 语义等更多高级特性，来支持用户在不同的业务场景中的需求。
 
 ##### 并行度
 
@@ -688,3 +708,491 @@ override def close(): Unit = {
 dataStream.addSink(new MyJdbcSink())
 ```
 
+## Flink 入门程序 WordCount 和 SQL 实现
+
+### DataSet WordCount
+
+```java
+public class BatchJob {
+
+
+	public static void main(String[] args) throws Exception {
+
+		final ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
+		env.setParallelism(5);
+		// get input data 使用fromElements函数创建一个DataSet对象
+		DataSet<String> text = env.fromElements(
+				"Flink Spark Storm",
+				"Flink Flink Flink",
+				"Spark Spark Spark",
+				"Storm Storm Storm"
+		);
+
+
+		DataSet<Tuple2<String, Integer>> counts =
+				text.flatMap(new LineSplitter())
+						.groupBy(0)
+						.sum(1).setParallelism(1);
+
+		counts.printToErr();
+
+	}
+
+	// 分割规则
+	public static final class LineSplitter implements FlatMapFunction<String, Tuple2<String, Integer>> {
+
+		@Override
+		public void flatMap(String value, Collector<Tuple2<String, Integer>> out) {
+			// normalize and split the line
+			String[] tokens = value.toLowerCase().split("\\W+");
+
+			for (String token : tokens) {
+				if (token.length() > 0) {
+					out.collect(new Tuple2<String, Integer>(token, 1));
+				}
+			}
+		}
+	}
+}
+```
+
+### DataStream WordCount
+
+​		选择监听一个本地的 Socket 端口，并且使用 Flink 中的滚动窗口，每 5 秒打印一次计算结果。代码如下：
+
+```
+nc -lk 9000
+```
+
+
+
+```java
+public class StreamingJob {
+
+    public static void main(String[] args) throws Exception {
+
+        // get the execution environment
+        final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+
+        // get input data by connecting to the socket
+        DataStream<String> text = env.socketTextStream("127.0.0.1", 9000, "\n");
+
+        // parse the data, group it, window it, and aggregate the counts
+        DataStream<WordWithCount> windowCounts = text
+                .flatMap(new FlatMapFunction<String, WordWithCount>() {
+                    @Override
+                    public void flatMap(String value, Collector<WordWithCount> out) {
+                        for (String word : value.split("\\s")) {
+                            out.collect(new WordWithCount(word, 1L));
+                        }
+                    }
+                })
+                .keyBy("word")
+                .timeWindow(Time.seconds(5), Time.seconds(1))
+                .reduce(new ReduceFunction<WordWithCount>() {
+                    @Override
+                    public WordWithCount reduce(WordWithCount a, WordWithCount b) {
+                        return new WordWithCount(a.word, a.count + b.count);
+                    }
+                });
+
+        // print the results with a single thread, rather than in parallel
+        windowCounts.print().setParallelism(1);
+
+        env.execute("Socket Window WordCount");
+    }
+
+    // Data type for words with count
+    public static class WordWithCount {
+
+        public String word;
+        public long count;
+
+        public WordWithCount() {}
+
+        public WordWithCount(String word, long count) {
+            this.word = word;
+            this.count = count;
+        }
+
+        @Override
+        public String toString() {
+            return word + " : " + count;
+        }
+    }
+}
+```
+
+### Flink Table & SQL WordCount
+
+Flink SQL 是 Flink 实时计算为简化计算模型，降低用户使用实时计算门槛而设计的一套符合标准 SQL 语义的开发语言。
+
+一个完整的 Flink SQL 编写的程序包括如下三部分。
+
+- **Source Operator：**是对外部数据源的抽象, 目前 Apache Flink 内置了很多常用的数据源实现，比如 MySQL、Kafka 等。
+- **Transformation Operators：**算子操作主要完成比如查询、聚合操作等，目前 Flink SQL 支持了 Union、Join、Projection、Difference、Intersection 及 window 等大多数传统数据库支持的操作。
+- **Sink Operator：**是对外结果表的抽象，目前 Apache Flink 也内置了很多常用的结果表的抽象，比如 Kafka Sink 等。
+
+
+
+```java
+public class WordCountSQL {
+    public static void main(String[] args) throws Exception {
+        //获取运行环境
+        ExecutionEnvironment fbEnv = ExecutionEnvironment.getExecutionEnvironment();
+
+        //创建一个tableEnvironment
+        BatchTableEnvironment fbTableEnv = BatchTableEnvironment.create(fbEnv);
+
+        String text = "hello flink hello lagou";
+        String[] words = text.split("\\W+");
+        ArrayList<WC> wordList = new ArrayList<>();
+
+        for (String word : words) {
+            WC wc = new WC(word, 1);
+            wordList.add(wc);
+        }
+
+      	 // 通过集合创建DataSet
+        DataSet<WC> input = fbEnv.fromCollection(wordList);
+
+        //DataSet 转sql, 指定字段名
+        Table table = fbTableEnv.fromDataSet(input, "word,frequency");
+        table.printSchema();
+
+        // 注册为一个表
+        fbTableEnv.createTemporaryView("WordCount", table);
+
+        // 查询
+        Table queryTable = fbTableEnv.sqlQuery("select word as word, sum(frequency) as frequency from WordCount GROUP BY word");
+
+        //将表转换DataSet
+        DataSet<WC> ds3 = fbTableEnv.toDataSet(queryTable, WC.class);
+        ds3.printToErr();
+
+    }
+
+
+    public static class WC {
+        public String word;
+        public long frequency;
+
+        public WC() {
+        }
+
+        public WC(String word, long frequency) {
+            this.word = word;
+            this.frequency = frequency;
+        }
+
+        @Override
+        public String toString() {
+            return word + ", " + frequency;
+        }
+    }
+}
+
+```
+
+
+
+## Flink 的核心语义和架构模型
+
+### Flink 核心概念
+
+- **Streams（流）**，流分为有界流和无界流。有界流指的是有固定大小，不随时间增加而增长的数据，比如我们保存在 Hive 中的一个表；而无界流指的是数据随着时间增加而增长，计算状态持续进行，比如我们消费 Kafka 中的消息，消息持续不断，那么计算也会持续进行不会结束。
+- **State（状态）**，所谓的状态指的是在进行流式计算过程中的信息。一般用作**容错恢复和持久化**，流式计算在本质上是增量计算，也就是说需要不断地查询过去的状态。状态在 Flink 中有十分重要的作用，例如为了确保 Exactly-once 语义需要将数据写到状态中；此外，状态的持久化存储也是集群出现 Fail-over 的情况下自动重启的前提条件。
+- **Time（时间）**，Flink 支持了 Event time、Ingestion time、Processing time 等多种时间语义，时间是我们在进行 Flink 程序开发时判断业务状态是否滞后和延迟的重要依据。
+- **API**：Flink 自身提供了不同级别的抽象来支持我们开发流式或者批量处理程序，由上而下可分为 SQL / Table API、DataStream API、ProcessFunction 三层，开发者可以根据需要选择不同层级的 API 进行开发。
+
+### Flink 编程模型和流式处理
+
+​		Flink 程序的基础构建模块是流（Streams）和转换（Transformations），每一个数据流起始于一个或多个 Source，并终止于一个或多个 Sink。数据流类似于有向无环图（DAG）。
+
+![1.png](/Users/wangfulin/github/github-note/images/flink/Ciqah16denaAPo7tAACo7DlykpM089.png)
+
+​		在分布式运行环境中，**Flink 提出了算子链的概念，Flink 将多个算子放在一个任务中，由同一个线程执行，减少线程之间的切换、消息的序列化/反序列化、数据在缓冲区的交换，减少延迟的同时提高整体的吞吐量。**
+
+​		官网中给出的例子如下，在并行环境下，Flink 将多个 operator 的子任务链接在一起形成了一个task，每个 task 都有一个独立的线程执行。
+
+![2.png](/Users/wangfulin/github/github-note/images/flink/Ciqah16deoGAJ4eKAACqajltWCA847.png)
+
+### Flink 集群模型和角色
+
+- **JobManager**：它扮演的是集群管理者的角色，负责调度任务、协调 checkpoints、协调故障恢复、收集 Job 的状态信息，并**管理 Flink 集群中的从节点 TaskManager**。
+- **TaskManager**：实际负责执行计算的 Worker，在其上执行 Flink Job 的一组 Task；TaskManager 还是所在节点的管理员，它负责把该节点上的服务器信息比如内存、磁盘、任务运行情况等向 JobManager 汇报。
+- **Client**：用户在提交编写好的 Flink 工程时，会先创建一个客户端再进行提交，这个客户端就是 Client，Client 会根据用户传入的参数选择使用 yarn per job 模式、stand-alone 模式还是 yarn-session 模式将 Flink 程序提交到集群。
+
+![3.png](/Users/wangfulin/github/github-note/images/flink/Cgq2xl6devOAAP4SAAEkBe4fiV8631.png)
+
+### Flink 资源和资源组
+
+​		在 Flink 集群中，一个 TaskManger 就是一个 JVM 进程，并且会用独立的线程来执行 task，为了控制一个 TaskManger 能接受多少个 task，Flink 提出了 Task Slot 的概念。
+
+​		可以简单的把 Task Slot 理解为 TaskManager 的计算资源子集。假如一个 TaskManager 拥有 5 个 slot，那么该 TaskManager 的计算资源会被平均分为 5 份，不同的 task 在不同的 slot 中执行，避免资源竞争。但是需要注意的是，slot 仅仅用来做内存的隔离，对 CPU 不起作用。那么运行在同一个 JVM 的 task 可以共享 TCP 连接，减少网络传输，在一定程度上提高了程序的运行效率，降低了资源消耗。
+
+![4.png](/Users/wangfulin/github/github-note/images/flink/Ciqah16dewmAe_daAACHWlNoIK0274.png)
+
+​		与此同时，Flink 还允许将不能形成算子链的两个操作，比如下图中的 flatmap 和 key&sink 放在一个 TaskSlot 里执行以达到资源共享的目的。
+
+![5.png](/Users/wangfulin/github/github-note/images/flink/Ciqah16dexKAV4vJAAEFgDwmVBw990.png)
+
+### Flink 的优势及与其他框架的区别
+
+#### 架构
+
+		- Stom 的架构是经典的主从模式，并且强依赖 ZooKeeper；
+		- Spark Streaming 的架构是基于 Spark 的，它的本质是微批处理，每个 batch 都依赖 Driver，我们可以把 Spark Streaming 理解为时间维度上的 Spark DAG。
+		-  Flink 也采用了经典的主从模式，DataFlow Graph 与 Storm 形成的拓扑 Topology 结构类似，Flink 程序启动后，会根据用户的代码处理成 Stream Graph，然后优化成为 JobGraph，JobManager 会根据 JobGraph 生成 ExecutionGraph。ExecutionGraph 才是 Flink 真正能执行的数据结构，当很多个 ExecutionGraph 分布在集群中，就会形成一张网状的拓扑结构。
+
+### Flink常用的 DataSet 和 DataStream API
+
+#### DataStream
+
+​		对于 DataSet 而言，Source 部分来源于文件、表或者 Java 集合；而 DataStream 的 Source 部分则一般是消息中间件比如 Kafka 等。
+
+自定义实时数据源
+
+```java
+public class MyDataStreamSource implements SourceFunction<MyDataStreamSource.Item> {
+
+    /**
+    * @Name: run
+    * @Description:  重写run方法产生一个源源不断的数据发送源
+    * @Param: [ctx]
+    * @return: void
+    * @Author: Wangfulin
+    * @Date: 2020/7/8
+    */
+
+    @Override
+    public void run(SourceContext<Item> ctx) throws Exception {
+        while (true) {
+            Item item = generateItem();
+            ctx.collect(item);
+
+            // 每秒产生一条数据
+            Thread.sleep(1000);
+        }
+    }
+
+    @Override
+    public void cancel() {
+
+    }
+
+    //随机产生一条商品数据
+    private Item generateItem() {
+        int i = new Random().nextInt(100);
+
+        Item item = new Item();
+        item.setName("name" + i);
+        item.setId(i);
+        return item;
+    }
+
+
+    class Item {
+        private String name;
+        private Integer id;
+
+        public Item() {
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public void setName(String name) {
+            this.name = name;
+        }
+
+        public Integer getId() {
+            return id;
+        }
+
+        public void setId(Integer id) {
+            this.id = id;
+        }
+
+        @Override
+        public String toString() {
+            return "Item{" +
+                    "name='" + name + '\'' +
+                    ", id=" + id +
+                    '}';
+        }
+    }
+}
+```
+
+​		在自定义的数据源中，实现了 Flink 中的 SourceFunction 接口，同时实现了其中的 run 方法，在 run 方法中每隔一秒钟随机发送一个自定义的 Item。
+
+```java
+public class DataStreamDemo {
+    public static void main(String[] args) throws Exception {
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+
+        // 获取数据源 并行度设置为1,
+        DataStreamSource<MyDataStreamSource.Item> text =
+                env.addSource(new MyDataStreamSource()).setParallelism(1);
+
+        DataStream<MyDataStreamSource.Item> item = text.map(
+                (MapFunction<MyDataStreamSource.Item, MyDataStreamSource.Item>) value -> value);
+
+
+        //打印结果
+        item.print().setParallelism(1);
+        String jobName = "user defined streaming source";
+        env.execute(jobName);
+    }
+}
+
+```
+
+#### Map
+
+Map 接受一个元素作为输入，并且根据开发者自定义的逻辑处理后输出。
+
+![image (5).png](/Users/wangfulin/github/github-note/images/flink/Ciqah16hThSAdYzhAADDHstaa9E625.png)
+
+```java
+SingleOutputStreamOperator<Object> mapItems = items.map(new MapFunction<MyStreamingSource.Item, Object>() {
+            @Override
+            public Object map(MyStreamingSource.Item item) throws Exception {
+                return item.getName();
+            }
+        });
+```
+
+或者
+
+```java
+SingleOutputStreamOperator<Object> mapItems = items.map(
+      item -> item.getName()
+);
+```
+
+自定义自己的 Map 函数。通过重写 MapFunction 或 RichMapFunction 来自定义自己的 map 函数。
+
+```java
+class StreamingDemo {
+    public static void main(String[] args) throws Exception {
+
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        //获取数据源
+        DataStreamSource<MyStreamingSource.Item> items = env.addSource(new MyStreamingSource()).setParallelism(1);
+        SingleOutputStreamOperator<String> mapItems = items.map(new MyMapFunction());
+        //打印结果
+        mapItems.print().setParallelism(1);
+        String jobName = "user defined streaming source";
+        env.execute(jobName);
+    }
+
+    static class MyMapFunction extends RichMapFunction<MyStreamingSource.Item,String> {
+
+        @Override
+        public String map(MyStreamingSource.Item item) throws Exception {
+            return item.getName();
+        }
+    }
+}
+
+```
+
+#### FlatMap
+
+​		接受一个元素，返回零到多个元素。FlatMap 和 Map 有些类似，但是当返回值是列表的时候，FlatMap 会将列表“平铺”，也就是以单个元素的形式进行输出。
+
+```java
+SingleOutputStreamOperator<Object> item = text.flatMap(new FlatMapFunction<MyDataStreamSource.Item, Object>() {
+            @Override
+            public void flatMap(MyDataStreamSource.Item item, org.apache.flink.util.Collector<Object> collector) throws Exception {
+                String name = item.getName();
+                collector.collect(name);
+            }
+        });
+```
+
+#### Filter
+
+Fliter 的意思就是过滤掉不需要的数据，每个元素都会被 filter 函数处理，如果 filter 函数返回 true 则保留，否则丢弃。
+
+```java
+SingleOutputStreamOperator<MyDataStreamSource.Item> item = text.filter(new FilterFunction<MyDataStreamSource.Item>() {
+    @Override
+    public boolean filter(MyDataStreamSource.Item item) throws Exception {
+        return item.getId() % 2 == 0;
+    }
+});
+```
+
+```java
+SingleOutputStreamOperator<MyDataStreamSource.Item> item = text.filter(
+        item1 -> item1.getId() % 2 == 0
+);
+```
+
+#### KeyBy
+
+​		该函数会把数据按照用户指定的 key 进行分组，那么相同分组的数据会被分发到一个 subtask 上进行处理，在大数据量和 key 分布不均匀的时非常容易出现数据倾斜和反压，导致任务失败。
+
+#### Aggregations
+
+Aggregations 为聚合函数的总称，常见的聚合函数包括但不限于 sum、max、min 等。Aggregations 也需要指定一个 key 进行聚合，官网给出了几个常见的例子：
+
+```java
+keyedStream.sum(0);
+keyedStream.sum("key");
+keyedStream.min(0);
+keyedStream.min("key");
+keyedStream.max(0);
+keyedStream.max("key");
+keyedStream.minBy(0);
+keyedStream.minBy("key");
+keyedStream.maxBy(0);
+keyedStream.maxBy("key");
+```
+
+min 和 minBy 的区别在于，min 会返回我们制定字段的最大值，minBy 会返回对应的元素（max 和 maxBy 同理）。
+
+```java
+//获取数据源
+List data = new ArrayList<Tuple3<Integer, Integer, Integer>>();
+data.add(new Tuple3<>(0, 1, 0));
+data.add(new Tuple3<>(0, 1, 1));
+data.add(new Tuple3<>(0, 2, 2));
+data.add(new Tuple3<>(0, 1, 3));
+data.add(new Tuple3<>(1, 2, 5));
+data.add(new Tuple3<>(1, 2, 9));
+data.add(new Tuple3<>(1, 2, 11));
+data.add(new Tuple3<>(1, 2, 13));
+DataStreamSource<MyDataStreamSource.Item> item = env.fromCollection(data);
+// 按照 Tuple3 的第一个元素进行聚合，并且按照第三个元素取最大值。
+item.keyBy(0).max(2).printToErr();
+```
+
+​		min 和 minBy 都会返回整个元素，只是 **min 会根据用户指定的字段取最小值，并且把这个值保存在对应的位置，而对于其他的字段，并不能保证其数值正确。**max 和 maxBy 同理。
+
+事实上，对于 Aggregations 函数，Flink 帮助我们封装了状态数据，这些状态数据不会被清理，所以在实际生产环境中**应该尽量避免在一个无限流上使用 Aggregations。而且，对于同一个 keyedStream ，只能调用一次 Aggregation 函数。**
+
+#### Reduce
+
+​		Reduce 函数的原理是，**会在每一个分组的 keyedStream 上生效**，它会按照用户自定义的聚合逻辑进行分组聚合。
+
+```java
+DataStreamSource<Tuple3<Integer, Integer, Integer>> item = env.fromCollection(data);
+SingleOutputStreamOperator<Tuple3<Integer, Integer, Integer>> reduceItem = item.keyBy(0).reduce(
+        new ReduceFunction<Tuple3<Integer, Integer, Integer>>() {
+            @Override
+            public Tuple3<Integer, Integer, Integer> reduce(Tuple3<Integer, Integer, Integer> t1, Tuple3<Integer, Integer, Integer> t2) throws Exception {
+                Tuple3<Integer, Integer, Integer> newTuple = new Tuple3<>();
+                newTuple.setFields(0, 0, (Integer) t1.getField(2) + (Integer) t2.getField(2));
+                return newTuple;
+            }
+        });
+```
+
+
+
+### Flink 常见核心概念

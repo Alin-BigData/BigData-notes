@@ -29,7 +29,7 @@ public class WordCountSQL {
             WC wc = new WC(word, 1);
             wordList.add(wc);
         }
-
+        // 通过集合创建DataSet
         DataSet<WC> input = fbEnv.fromCollection(wordList);
 
         //DataSet 转sql, 指定字段名

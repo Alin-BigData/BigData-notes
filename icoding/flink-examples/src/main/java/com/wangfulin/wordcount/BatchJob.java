@@ -37,6 +37,7 @@ public class BatchJob {
         counts.printToErr();
     }
 
+    //  分割规则
     public static final class LineSplitter implements FlatMapFunction<String, Tuple2<String, Integer>> {
 
         @Override
