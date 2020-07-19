@@ -267,7 +267,7 @@ val env = ExecutionEnvironment.createRemoteEnvironment("jobmanage-hostname", 612
 
 #### Source
 
-从集合读取数据
+**从集合读取数据**
 
 ```scala
 // 定义样例类，传感器 id，时间戳，温度
@@ -276,6 +276,7 @@ case class SensorReading(id: String, timestamp: Long, temperature: Double)
 object Sensor {
   def main(args: Array[String]): Unit = {
     val env = StreamExecutionEnvironment.getExecutionEnvironment
+    // 从自定义的集合创建流 
     val stream1 = env .fromCollection(List(
     SensorReading("sensor_1", 1547718199, 35.80018327300259), 				SensorReading("sensor_6", 1547718201, 15.402984393403084), 				SensorReading("sensor_7", 1547718202, 6.720945201171228), 				SensorReading("sensor_10", 1547718205, 38.101067604893444)
     ))
@@ -285,7 +286,7 @@ object Sensor {
 }
 ```
 
-从文件读取数据
+**从文件读取数据**
 
 ```scala
 val stream2 = env.readTextFile("YOUR_FILE_PATH")
@@ -302,14 +303,16 @@ val stream2 = env.readTextFile("YOUR_FILE_PATH")
 ```
 
 ```scala
-val properties = new Properties() properties.setProperty("bootstrap.servers", "localhost:9092") properties.setProperty("group.id", "consumer-group") properties.setProperty("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer") properties.setProperty("value.deserializer",
+val properties = new Properties() properties.setProperty("bootstrap.servers", "localhost:9092") properties.setProperty("group.id", "consumer-group") 
+properties.setProperty("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer") properties.setProperty("value.deserializer",
 "org.apache.kafka.common.serialization.StringDeserializer") 
 properties.setProperty("auto.offset.reset", "latest")
 
+// 更加通用的方法 addSource(SourceFunction...)
 val stream3 = env.addSource(new FlinkKafkaConsumer011[String]("sensor", new SimpleStringSchema(), properties))
 ```
 
-自定义 Source
+**自定义 Source**
 
 需要做的，只是传入一个 SourceFunction 就可以
 
@@ -319,22 +322,28 @@ val stream4 = env.addSource( new MySensorSource() )
 
 ```scala
 class MySensorSource extends SourceFunction[SensorReading]{
-  // flag: 表示数据源是否还在正常运行 var running: Boolean = true
+  // flag: 表示数据源是否还在正常运行 
+  var running: Boolean = true
   override def cancel(): Unit = { 
     running = false
   }
   override def run(ctx: SourceFunction.SourceContext[SensorReading]): Unit ={
-    // 初始化一个随机数发生器 val rand = new Random()
+    // 初始化一个随机数发生器 
+    val rand = new Random()
     var curTemp = 1.to(10).map(
+      // 高斯随机数
     i => ( "sensor_" + i, 65 + rand.nextGaussian() * 20 )
     )
-    while(running){ // 更新温度值
+    // 用无限循环 生成随机数
+    while(running){ 
+      // 在前一次的基础上 更新温度值
       curTemp = curTemp.map(
-      t => (t._1, t._2 + rand.nextGaussian() )
+      t => (t._1, t._2 + rand.nextGaussian())
       )
       // 获取当前时间戳
       val curTime = System.currentTimeMillis()
       curTemp.foreach(
+       // ctx.collect()里面的数据就是要输出的数据
       t => ctx.collect(SensorReading(t._1, curTime, t._2))
       )
       Thread.sleep(100) 
@@ -1195,4 +1204,3 @@ SingleOutputStreamOperator<Tuple3<Integer, Integer, Integer>> reduceItem = item.
 
 
 
-### Flink 常见核心概念
