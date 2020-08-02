@@ -98,11 +98,13 @@
 
 #### Hive
 
-#### [Hive](./docs/hive/Hive.md)
+- [Hive基础](./docs/hive/Hive基础.md)
+- [Hive进阶实战](./docs/hive/Hive进阶实战.md)
 
 主要来源：
 
 - 尚硅谷教育
+- 奈学教育
 
 #### Zookeeper
 
@@ -114,7 +116,7 @@
 
 ---
 
-CDH相关的软件下载地址：http://archive.cloudera.com/cdh5/cdh/5/cdh-5.7.0
+CDH相关的软件下载地址：http://archive.cloudera.com/cdh5/cdh/5/ cdh-5.7.0
 
 
 
