@@ -2102,7 +2102,110 @@ by字段分组，按distinct字段排序
 
 C、Join关联查询，特别是超大表
 
- 
+**场景：**
+
+ **A:空值或无意义值产生的数据倾斜**
+
+场景说明:在日志中，常会有信息丢失的问题，比如日志中的 user_id，如果取其中的 user_id 和用户 表中的user_id 相关联，就会碰到数据倾斜的问题。
+
+```sql
+select * from log a left join user b on a.userid = b.userid;
+# 如果log表有1E条数据，其中100W条数据的USERID为空，那么底层的mapreduce在执行和shffle过程中 的时候，就会把所有的为空的记录的都会发送到同一个redueTask
+```
+
+解决方案1:user_id为空的不参与关联
+
+```sql
+select * from log a join user b on a.user_id is not null and a.user_id = b.user_id
+union all
+select * from log c where c.user_id is null;
+```
+
+解决方案2:赋予空值新的key值
+
+```sql
+select * from log a left outer join user b on
+case when a.user_id is null then concat('hive',rand()) else a.user_id end = b.user_id;
+# 要让着100W条记录被分散到所有的reduceTask中，而且，分散了之后，还不能影响最终的业务结果
+```
+
+总结:方法2比方法1效率更好，不但IO少了，而且作业数也少了，方案1中，log表读了两次，jobs肯定 是2，而方案2是1。这个优化适合无效id(比如-99，""，null)产生的数据倾斜，把空值的 key 变成一 个字符串加上一个随机数，就能把造成数据倾斜的数据分到不同的 reduce 上解决数据倾斜的问题，
+
+改变之处:使本身为 null 的所有记录不会拥挤在同一个 reduceTask 了，会由于有替代的随机字符串 值，而分散到了多个 reduceTask中 了，由于 null 值关联不上，处理后并不影响最终结果。
+
+**B:不同数据类型关联产生数据倾斜**
+
+场景说明:用户表中user_id 字段为 int，log 表中user_id为既有 string 也有 int 的类型，当按照两个表的user_id 进行 join 操作的时候，默认的 hash 操作会按照 int 类型的 id 进行分配，这样就会导致所有的string 类型的 id 就被分到同一个 reducer 当中就有可能造成数据倾斜。
+
+**解决方案**:把数字类型 id 转换成 string 类型的 id
+
+```sql
+select * from user a left outer join log b on b.user_id = cast(a.user_id as string)
+-- user表中的userid是int类型， log表中的userid是string类型
+```
+
+**C:大小表关联查询产生数据倾斜**
+
+mapreduce实现join逻辑有两种方式:
+
+- 1、reduceJoin:通用的join实现，不用关系数量的大小。但是可能造成数据倾斜。
+
+- 2、mapJoin:场景有限:大小表做join, 没有reducer阶段，所以就没有数据倾斜
+
+注意:使用 MapJoin 解决小表关联大表造成的数据倾斜问题。这个方法使用的频率很高。 
+
+MapJoin 概念:
+
+```
+将其中做连接的小表(全量数据)分发到所有 mapTask 端进行 Join，从而避免了 reduceTask，前提要求是内存足以装下该全量数据。
+```
+
+以大表a和小表b为例，所有的 mapTask 节点都装载小表b的所有数据，然后大表a的一个数据块数据比 如说是a1去跟 b 全量数据做链接，就省去了 reduceTask 做汇总的过程。所以相对来说，在内存允许的 条件下使用 MapJoin 比直接使用 MapReduce 效率还高些，当然这只限于做 join 查询的时候。
+
+在 Hive 中，直接提供了能够在HQL语句指定该次查询使用 MapJoin ，MapJoin 的用法是在查询/子查 询的 SELECT 关键字后面添加 **/\*+ mapjoin(tablelist) \*/** 提示优化器转化为 MapJoin (早期的Hive版 本的优化器是不能自动优化 MapJoin 的)。其中 tablelist 可以是一个表，或以逗号连接的表的列表。 tablelist 中的表将会读入内存，通常应该是将小表写在这里。
+
+```sql
+select /* +mapjoin(a) */ a.*, b.* from a join b on a.id = b.id;
+```
+
+MapJoin具体用法:
+
+```sql
+select /* +mapjoin(a) */ a.id aid, name, age from a join b on a.id = b.id; 
+select /* +mapjoin(movies) */ a.title, b.rating from movies a join ratings b on a.movieid = b.movieid;
+```
+
+在 Hive-0.11 版本以后会自动开启 MapJoin 优化，由两个参数控制:
+
+```sql
+set hive.auto.convert.join=true; //设置MapJoin优化自动开启 set hive.mapjoin.smalltable.filesize=25000000 //设置小表不超过多大时开启 mapjoin优化
+```
+
+**D:那么如果小表不大不小，那该如何处理呢?**
+
+使用 MapJoin 解决小表(记录数少)关联大表的数据倾斜问题，这个方法使用的频率非常高，但如果小表 很大，大到MapJoin 会出现 bug 或异常，这时就需要特别的处理。
+
+举一例:日志表和用户表做链接
+
+```sql
+select * from log a left outer join users b on a.user_id = b.user_id;
+```
+
+users 表有 600w+ 的记录，把 users 分发到所有的 map 上也是个不小的开销，而且 MapJoin 不支持 这么大的小表。如果用普通的 join，又会碰到数据倾斜的问题。
+
+改进方案:
+
+```sql
+select /*+mapjoin(x)*/ * from log a
+left outer join (
+select /*+mapjoin(c)*/ d.*
+from ( select distinct user_id from log ) c join users d on c.user_id =
+d.user_id
+)x
+on a.user_id = x.user_id;
+```
+
+这个方法能解决很 多场景下的数据倾斜问题。
 
 #### Fetch 抓取
 
