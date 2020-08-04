@@ -114,6 +114,21 @@ managed内部表、external外部表、partition分区表、bucket分桶表。
 
 ​		Hive 要访问数据中满足条件的特定值时，需要暴力扫描整个数据，因此访问延迟较高。由于 MapReduce 的引入， Hive 可以并行访问数据，因 此即使没有索引，对于大数据量的访问，Hive 仍然可以体现出优势。
 
+#### hive配置
+
+hive的参数的指定方式其实有三种：
+1、也可以在hive-site.xml中配置。
+2、进入hive shell客户端之前， hive -hiveconf key=value
+3、进入之后：
+	hive > set key=value;
+
+
+如果以上三种方式都进行了配置，请问，到底最后那种生效？优先级是什么?
+1 < 2 < 3 
+
+按照生效顺序；
+1 > 2 > 3
+
 ### 启动hive
 
 遇到
@@ -266,6 +281,8 @@ create table test(
 ```
 
 字段解释:
+
+```sql
 row format delimited fields terminated by ',' -- 列分隔符
 
 collection items terminated by '_'  --MAP STRUCT 和 ARRAY 的分隔符(数据分割符号)
@@ -273,6 +290,65 @@ collection items terminated by '_'  --MAP STRUCT 和 ARRAY 的分隔符(数据�
 map keys terminated by ':' -- MAP 中的 key 与 value 的分隔符
 
 lines terminated by '\n';  -- 行分隔符
+```
+
+##### array
+
+数据:table_array.txt
+
+```
+huangbo-beijing,shanghai,tianjin,hangzhou
+xuzheng-changchu,chengdu,wuhan
+wangbaoqiang-dalian,shenyang,jilin 	
+```
+
+建表语句:
+
+```sql
+create table table_array(name string, work_locations array<string>) 
+row format delimited fields terminated by '-'  
+collection items terminated by ','; 								
+```
+
+导入数据:
+
+```sql
+load data local inpath '/home/bigdata/table_array.txt' into table table_array;
+```
+
+##### map
+
+数据:table_map.txt
+
+```
+huangbo-yuwen:80,shuxue:89,yingyu:95
+xuzheng-yuwen:70,shuxue:65,yingyu:81
+wangbaoqiang-yuwen:75,shuxue:100,yingyu:75
+```
+
+导入数据:
+
+```sql
+load data local inpath '/home/bigdata/table_map.txt' into table table_map;
+```
+
+##### struct
+
+数据:table_struct.txt
+
+```
+1-english,80,3.3 
+2-math,89,3.9 
+3-chinese,95,4.7
+```
+
+建表语句:
+
+```sql
+create table table_struct(id int, course struct<name:string, score:int, jidian:float>)
+row format delimited fields terminated by '-'
+collection items terminated by ',';
+```
 
 #### 类型转化
 
@@ -321,7 +397,7 @@ create database if not exists db_hive;
  hive (default)> create database db_hive2 location '/db_hive2.db';
 ```
 
-### 查询数据库
+#### 查询数据库
 
 ```
 // 查看数据库
@@ -1757,6 +1833,14 @@ xxxxx14    u_002  2017/1/5  101
 
 ### 函数
 
+#### Hive内置函数
+
+```
+查看内置函数:show functions; 
+显示函数的详细信息:desc function abs; 
+显示函数的扩展信息:desc function extended concat;
+```
+
 #### 自定义函数
 
 根据用户自定义函数类别分为以下三种:
@@ -1773,6 +1857,12 @@ xxxxx14    u_002  2017/1/5  101
  一进多出
 
 如 lateral view explore()
+
+| 函数类型 | 解释                                                         |
+| -------- | ------------------------------------------------------------ |
+| UDF      | (user-defined function)作用于单个数据行，产生一个数据行作为输出。数学函数， 字符串函数，相当于一个映射操作，一个输入，一个输出 |
+| UDAF     | (用户定义聚集函数User- Defined Aggregation Funcation):接收多个输入数据行， 并产生一个输出数据行，count，max等，相当于聚合操作，多个输入，一个输出 |
+| UDTF     | (表格生成函数User-Defined Table Functions):接收一行输入，输出多行 (explode)。相当于炸裂操作，一个输入，多个输出 |
 
 （4）官方文档
 
@@ -1883,7 +1973,136 @@ public class Udtf extends GenericUDTF {
 
 ![image-20200618110716508](../../images/hive/image-20200618110716508.png)
 
+### Transform实现
+
+Hive 的 Transform 关键字提供了在 SQL 中调用自写脚本的功能。适合实现 Hive 中没有的功能又不想
+
+写 UDF 的情况。
+
+```json
+{"movie":"1193","rate":"5","timeStamp":"978300760","uid":"1"}
+```
+
+需求:把 timestamp 的值转换成日期编号
+
+1、先加载 rating.json 文件到hive的一个原始表 rate_json
+
+```sql
+create table rate_json(line string) row format delimited;
+load data local inpath '/home/bigdata/rating.json' into table rate_json;
+```
+
+2、创建 rate 这张表用来存储解析 json 出来的字段:
+
+```sql
+create table rate(movie int, rate int, unixtime int, userid int) row format
+delimited fields terminated by '\t';
+```
+
+解析 json，得到结果之后存入 rate 表:
+
+```sql
+insert into table rate select get_json_object(line,'$.movie') as moive, get_json_object(line,'$.rate') as rate, get_json_object(line,'$.timeStamp') as unixtime, get_json_object(line,'$.uid') as userid
+from rate_json;
+```
+
+3、使用 transform+python 的方式去转换 unixtime 为 weekday
+
+先编辑一个 python 脚本文件:weekday_mapper.py
+
+```python
+#!/bin/python
+import sys
+import datetime
+for line in sys.stdin:
+  line = line.strip()
+  movie,rate,unixtime,userid = line.split('\t')
+  weekday = datetime.datetime.fromtimestamp(float(unixtime)).isoweekday() print '\t'.join([movie, rate, str(weekday), userid])
+```
+
+将文件加入 hive 的 classpath:
+
+```sql
+hive> add file /home/bigdata/weekday_mapper.py;
+```
+
+创建最后的用来存储调用python脚本解析出来的数据的表:lastjsontable
+
+```sql
+create table lastjsontable(movie int, rate int, weekday int, userid int) row
+format delimited fields terminated by '\t';
+```
+
+```sql
+
+hive> insert into table lastjsontable select transform(movie,rate,unixtime,userid)
+using 'python weekday_mapper.py' as(movie,rate,weekday,userid) from rate;
+```
+
+
+
+### 视图
+
+Hive的视图和关系型数据库的区别:
+
+1、只有逻辑视图，没有物化视图;
+
+2、视图只能查询，不能 Load/Insert/Update/Delete 数据; 
+
+3、视图在创建时候，只是保存了一份元数据，当查询视图的时候，才开始执行视图对应的那些子查询
+
+**创建视图**
+
+```sql
+create view view_name as select * from carss;
+create view carss_view as select * from carss limit 500;
+```
+
+**查看视图**
+
+```sql
+show views; -- 在新版中可以使用这个命令查看视图列表 
+show tables; -- 可以查看表，也可以查看视图
+desc view_name; -- 查看某个具体视图的信息
+desc carss_view; -- 查看carss视图的信息
+```
+
+**删除视图**
+
+```sql
+drop view view_name
+drop view if exists carss_view
+```
+
+**使用视图**
+
+```sql
+create view sogou_view as select * from sogou_table where rank > 3 ;
+select count(distinct uid) from sogou_view;
+```
+
+
+
 ### 调优
+
+#### 数据倾斜
+
+| 关键词         | 情形                                            | 后果                                                         |
+| -------------- | ----------------------------------------------- | ------------------------------------------------------------ |
+| join           | 其中一个表较小，但是key集中                     | 分发到某一个或某几个reduceTask的数据远高于平均值             |
+| join           | 大表和大表，但是分桶的判断字段的0值或者空值过多 | 这些0值或者空值都由一个reduceTask处理，  造成数据热点，所以非常慢 |
+| group by       | group by维度过小，某值过多                      | 处理该热点值的reduceTask非常慢                               |
+| count distinct | 某特殊值过多                                    | 处理此特殊值的reduceTask特别慢                               |
+
+A、group by不和聚集函数搭配使用的时候，hive不能转化hql到marepduce执行时实施mapper端预聚合 
+
+B、count(distinct)，在数据量很大的情况下，容易数据倾斜，因为count(distinct)是按照group
+
+by字段分组，按distinct字段排序 
+
+C、Join关联查询，特别是超大表
+
+ 
 
 #### Fetch 抓取
 
@@ -1911,7 +2130,7 @@ set hive.exec.mode.local.auto=true; //开启本地 mr
  set hive.exec.mode.local.auto.input.files.max=10;
 ```
 
-![image-20200618114937289](/image/hive/image-20200618114937289.png)
+![image-20200618114937289](../../images/hive/image-20200618114937289.png)
 
 #### 表的优化
 
@@ -1927,7 +2146,7 @@ set hive.exec.mode.local.auto=true; //开启本地 mr
 
 ![image-20200618115300173](../../images/hive/image-20200618115300173.png)
 
-```
+```sql
 // 创建大表
 create table bigtable(id bigint, time bigint, uid string, keyword string, url_rank int, click_num int, click_url string) row format delimited fields terminated by '\t';
 // 创建小表
@@ -2060,8 +2279,6 @@ hive.groupby.skewindata = true
 
 ​		当选项设定为 true，生成的查询计划会有两个 MR Job。第一个 MR Job 中，**Map 的输出结果会随机分布到 Reduce 中，每个 Reduce 做部分聚合操作，并输出结果，这样处理的结果是相同的 Group By Key 有可能被分发到不同的 Reduce 中，从而达到负载均衡的目的;**第二个 MR Job 再根据预处理的数据结果按照 Group By Key 分布到 Reduce 中(这个过程可以 保证相同的 Group By Key 被分布到同一个 Reduce 中)，最后完成最终的聚合操作
 
-
-
 ##### Count(Distinct) 去重统计
 
 数据量小的时候无所谓，数据量大的情况下，**由于 COUNT DISTINCT 操作需要用一个 Reduce Task 来完成，这一个 Reduce 需要处理的数据量太大，就会导致整个 Job 很难完成**， 一般 `COUNT DISTINCT` **使用先 GROUP BY 再 COUNT 的方式替换,GROUP BY分组后发到一个单独的reduce处理。**:
@@ -2079,8 +2296,7 @@ set mapreduce.job.reduces = 5;
 # 执行去重 id 查询
 select count(distinct id) from bigtable;
 # 采用 GROUP by 去重 id
- select count(id) from (select id from bigtable 
-group by id) a;
+select count(id) from (select id from bigtable group by id) a;
 ```
 
 ​		尽量避免笛卡尔积，join 的时候不加 on 条件，或者无效的 on 条件，Hive 只能使用 1 个 reducer 来完成笛卡尔积。
@@ -2246,6 +2462,104 @@ hive (default)> explain select deptno, avg(sal) avg_sal from emp group by deptno
 hive (default)> explain extended select * from emp;
 hive (default)> explain extended select deptno, avg(sal) avg_sal from emp group by deptno;
 ```
+
+### 辅助命令
+
+查看数据库列表
+
+```sql
+show databases;
+show databases like 'my*';
+```
+
+查看数据表
+
+```sql
+show tables;
+show tables in db_name;
+```
+
+查看数据表的建表语句
+
+```sql
+show create table table_name;
+```
+
+查看hive函数列表
+
+```sql
+show functions;
+```
+
+查看某函数(比如:substring)的详细使用方式
+
+```sql
+desc function extended substring;
+```
+
+查看hive表的分区
+
+```sql
+show partitions table_name;
+show partitions table_name partition(city='beijing');
+```
+
+查看表的详细信息(元数据信息) 常用！
+
+```sql
+desc table_name;
+desc extended table_name;
+desc formatted table_name;
+```
+
+查看数据库的详细属性信息
+
+```sql
+desc database db_name;
+desc database extended db_name;
+```
+
+### 辅助技能
+
+1、进入到用户的主目录，使用命令可以查看到hive执行的历史命令
+
+```shell
+cat /home/bigdata/.hivehistory
+```
+
+执行log中，会有如下三个重要的信息:
+
+```
+In order to change the average load for a reducer (in bytes): set hive.exec.reducers.bytes.per.reducer=<number>
+
+In order to limit the maximum number of reducers: set hive.exec.reducers.max=<number>
+
+In order to set a constant number of reducers: set mapreduce.job.reduces=<number>
+```
+
+hive.exec.reducers.bytes.per.reducer:
+
+一次hive查询中，每一个reduce任务它处理的平均数据量， 默认：256000000。
+
+hive.exec.reducers.max：
+
+一次hive查询中，最多使用的reduce hive.exec.reducers.max task的数量 默认：1009
+
+mapreduce.job.reduces：
+
+设置的reducetask数量，默认：-1
+
+
+
+**set hive.exec.reducers.bytes.per.reducer=**每个reduce task的平均负载数据量 
+
+Hive会估算总数据量，然后用该值除以上述参数值，就能得出需要运行的reduceTask数 
+
+**set hive.exec.reducers.max=**设置reduce task数量的上限
+
+**set mapreduce.job.reduces=** 指定固定的reduce task数量
+
+但是，这个参数在必要时<业务逻辑决定只能用一个reduce task> hive会忽略，比如在设置了set mapreduce.job.reduces = 3，但是HQL语句当中使用了order by 的话，那么就会忽略该参数的设置， 因为order by 是全局排序，所以会使用一个 reduceTask 进行排序。
 
 ### Hive 实战之谷粒影音
 
