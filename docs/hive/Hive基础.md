@@ -1176,7 +1176,7 @@ ON d.loc = l.loc;
 
 Hive 会对每对 JOIN 连接对象启动一个 MapReduce 任务。本例中会首 先启动一个 MapReduce job 对表 e 和表 d 进行连接操作，然后会再启动一个 MapReduce job 将第一个 MapReduce job 的输出和表 l;进行连接操作。
 
-#### 
+
 
 ##### 排序
 
@@ -2207,7 +2207,7 @@ on a.user_id = x.user_id;
 
 这个方法能解决很 多场景下的数据倾斜问题。
 
-### Hive执行过程实例分析
+#### Hive执行过程实例分析
 
 **SQL** **转换成** **MapReduce** **的完整流程:**
 
@@ -2245,7 +2245,7 @@ Physical Optimizer:选择最佳的Join策略，优化物理执行计划
 
 #### Fetch 抓取
 
-​		Fetch 抓取是指，Hive 中对某些情况的查询可以不必使用 MapReduce 计算。例如: SELECT  *  FROM  employees;在这种情况下，Hive可以简单地读取 employee 对应的存储目录 下的文件，然后输出查询结果到控制台。
+​		Fetch 抓取是指，Hive 中对某些情况的查询可以不必使用 MapReduce 计算。例如: SELECT  *  FROM  employees;在这种情况下，Hive可以简单地读取 employee 对应的存储目录下的文件，然后输出查询结果到控制台。
 
 ​		在 hive-default.xml.template 文件中 hive.fetch.task.conversion 默认是 more，老版本 hive 默认是 minimal，该属性修改为 more 以后，在全局查找、字段查找、limit 查找等都不走 mapreduce。
 
@@ -2279,6 +2279,14 @@ set hive.exec.mode.local.auto=true; //开启本地 mr
 
 ​		**实际测试发现:新版的 hive 已经对小表 JOIN 大表和大表 JOIN 小表进行了优化。小表 放在左边和右边已经没有明显区别。**
 
+总体原则:
+
+```
+1、优先过滤后再进行Join操作，最大限度的减少参与join的数据量 
+2、小表join大表，最好启动mapjoin
+3、Join on的条件相同的话，最好放入同一个job，并且join表的排列顺序从小到大
+```
+
 ![image-20200618115219392](../../images/hive/image-20200618115219392.png)
 
 ![image-20200618115239048](/Users/wangfulin/Library/Application Support/typora-user-images/image-20200618115239048.png)
@@ -2311,7 +2319,59 @@ from bigtable b
 left join smalltable s on s.id = b.id
 ```
 
+Join操作在Map阶段完成，不再需要Reduce，有多少个Map Task，就有多少个结果文件。
+
+规避笛卡尔积的方法是， 给 Join 添加一个 Join key，原理很简单:将小表扩充一列 join key，并将小表的条目复制数倍，join key 各不相同;将大表扩充一列 join key 为随机数。
+
+**精髓就在于复制几倍，最后就有几个** **reduce** **来做，而且大表的数据是前面小表扩张** **key** **值范围里面随机出来的，所以复制了几倍** n，就相当于这个随机范围就有多大n，那么相应的，大表的数据就被随机 的分为了 **n** **份。并且最后处理所用的** **reduce** **数量也是** n，而且也不会出现数据倾斜。
+
 ##### 大表 Join 大表
+
+总体原则:
+
+```
+1、优先过滤后再进行Join操作，最大限度的减少参与join的数据量 
+2、小表join大表，最好启动mapjoin
+3、Join on的条件相同的话，最好放入同一个job，并且join表的排列顺序从小到大
+```
+
+​	在最常见的 Hash Join 方法中，一般总有一张相对小的表和一张相对大的表，小表叫 build table，大表 叫 probe table。Hive 在解析带 join 的 SQL 语句时，会默认将最后一个表作为 probe table，将前面的 表作为 build table并试图将它们读进内存。如果表顺序写反，probe table 在前面，引发 OOM 的风险 就高了。在维度建模数据仓库中，事实表就是 probe table，维度表就是 build table。
+
+​	在使用写有 Join 操作的查询语句时有一条原则:应该将条目少的表/子查询放在 Join 操作符的左边。原 因是在 Join操作的 Reduce 阶段，位于 Join 操作符左边的表的内容会被加载进内存，将条目少的表放在 左边，可以有效减少发生 OOM 错误的几率。对于一条语句中有多个 Join 的情况，如果 Join 的条件相 同，比如查询
+
+```sql
+INSERT OVERWRITE TABLE pv_users
+SELECT pv.pageid, u.age FROM page_view p JOIN user u ON (pv.userid = u.userid) JOIN newuser x ON (u.userid = x.userid);
+```
+
+​	如果 Join 的 key 相同，不管有多少个表，都会则会合并为一个Map-Reduce任务，而不是”n”个，在做 OUTER JOIN的时候也是一样
+
+如果 Join 的条件不相同，比如:
+
+```sql
+INSERT OVERWRITE TABLE pv_users
+SELECT pv.pageid, u.age FROM page_view p JOIN user u ON (pv.userid = u.userid) JOIN newuser x on (u.age = x.age);
+```
+
+​	Map-Reduce 的任务数目和 Join 操作的数目是对应的，上述查询和以下查询是等价的.
+
+```sql
+-- 先page_view表和user表做链接
+INSERT OVERWRITE TABLE tmptable SELECT * FROM page_view p JOIN user u ON (pv.userid = u.userid);
+-- 然后结果表temptable和newuser表做链接
+INSERT OVERWRITE TABLE pv_users SELECT x.pageid, x.age FROM tmptable x JOIN newuser y ON (x.age = y.age);
+```
+
+在编写 Join 查询语句时，如果确定是由于 join 出现的数据倾斜，那么请做如下设置:
+
+```shell
+set hive.skewjoin.key=100000; #join的键对应的记录条数超过这个值则会进行分拆，值根据具 体数据量设置
+set hive.optimize.skewjoin=false; #如果是join过程出现倾斜应该设置为true
+```
+
+如果开启了，在 Join 过程中 Hive 会将计数超过阈值 hive.skewjoin.key(默认100000)的倾斜key对应 的行临时写进文件中，然后再启动另一个 job 做 map join 生成结果。
+
+通过 hive.skewjoin.mapjoin.map.tasks 参数还可以控制第二个job的mapper数量，默认10000。
 
 1.空 KEY 过滤
 
@@ -2360,9 +2420,13 @@ case when n.id is null then concat('hive', rand()) else n.id end = o.id;
 
 #####  MapJoin
 
-如果不指定 MapJoin 或者不符合 MapJoin 的条件，那么 Hive 解析器会将 Join 操作转换 成 Common Join，即:在 Reduce 阶段完成 join。容易发生数据倾斜。可以用 MapJoin 把小 表全部加载到内存在 map 端进行 join，避免 reducer 处理。
+​		Hive 会将 build table(小表)和 probe table (大表)在 map 端直接完成 join 过程，消灭了 reduce，效率很高。而且 MapJoin 还支持非等值连接。表 Join 的顺序(大表放在后面)如果不指定 MapJoin 或者不符合 MapJoin 的条件，那么 Hive 解析器会将 Join 操作转换 成 Common Join，即:在 Reduce 阶段完成 join。容易发生数据倾斜。可以用 MapJoin 把小表全部加载到内存在 map 端进行 join，避免 reducer 处理。
 
-```
+Hive 将 JOIN 语句中的最后一个表用于流式传输，因此我们需要确保这个流表在两者之间是最大的。如果要在 不同的 key 上 join 更多的表，那么对于每个 join 集，只需在 ON 条件右侧指定较大的表。
+
+**Sort-Merge-Bucket(SMB) Map Join**，它是另一种Hive Join优化技术，使用这个技术的前提是所有的 表都必须是桶分区(bucket)和排序了的(sort)。
+
+```shell
 # 1.开启 MapJoin 参数设置
 # (1)设置自动选择 MapJoin
 set hive.auto.convert.join = true; 默认为 true
@@ -2374,9 +2438,16 @@ MapJoin 工作机制
 
 ![image-20200621143146868](../../images/hive/image-20200621143146868.png)
 
-实例
+从图中可以看出MapJoin分为两个阶段:
 
 ```
+(1)通过MapReduce Local Task，将小表读入内存，生成内存HashTableFiles上传至Distributed Cache中，这里会对HashTableFiles进行压缩。
+(2)MapReduce Job在Map阶段，每个Mapper从Distributed Cache读取HashTableFiles到内存 中，顺序扫描大表，在Map阶段直接进行Join，将数据传递给下一个MapReduce任务。也就是在map端进行 join避免了shuffle。
+```
+
+实例
+
+```shell
 set hive.auto.convert.join = true; 默认为 true
 # 执行小表 JOIN 大表语句
 insert overwrite table jointable
@@ -2391,6 +2462,8 @@ from bigtable b
 join smalltable s
 on s.id = b.id;
 ```
+
+Join操作在Map阶段完成，不再需要Reduce，有多少个Map Task，就有多少个结果文件。
 
 ##### Group By
 
@@ -2416,13 +2489,49 @@ hive.groupby.mapaggr.checkinterval = 100000
 hive.groupby.skewindata = true
 ```
 
-​		当选项设定为 true，生成的查询计划会有两个 MR Job。第一个 MR Job 中，**Map 的输出结果会随机分布到 Reduce 中，每个 Reduce 做部分聚合操作，并输出结果，这样处理的结果是相同的 Group By Key 有可能被分发到不同的 Reduce 中，从而达到负载均衡的目的;**第二个 MR Job 再根据预处理的数据结果按照 Group By Key 分布到 Reduce 中(这个过程可以 保证相同的 Group By Key 被分布到同一个 Reduce 中)，最后完成最终的聚合操作
+​		当选项设定为 true，生成的查询计划会有两个 MR Job,策略就是把 MapReduce 任务拆分成两个:**第一个先做预汇总，第二个再做最终汇总**。第一个 MR Job 中，**Map 的输出结果会随机分布到 Reduce 中，每个 Reduce 做部分聚合操作，并输出结果，这样处理的结果是相同的 Group By Key 有可能被分发到不同的 Reduce 中，从而达到负载均衡的目的;**第二个 MR Job 再根据预处理的数据结果按照 Group By Key 分布到 Reduce 中(这个过程可以 保证相同的 Group By Key 被分布到同一个 Reduce 中)，最后完成最终的聚合操作.
+
+当要统计某一列去重数时，如果数据量很大，count(distinct) 就会非常慢，原因与 order by 类似， count(distinct) 逻辑只会有很少的 reducer 来处理。这时可以用 group by 来改写.
+
+```sql
+select count(1) from (
+    select age from student
+    where department >= "MA"
+    group by age
+) t;
+```
+
+但是这样写会启动两个MR job(单纯 distinct 只会启动一个)，所以要确保数据量大到启动 job 的 overhead 远小于计算耗时，才考虑这种方法。当数据集很小或者 key 的倾斜比较明显时，group by 还 可能会比 distinct 慢。
+
+如何用 group by 方式同时统计多个列?
+
+```sql
+select t.a,sum(t.b),count(t.c),count(t.d) from ( 
+  select a,b,null c,null d from some_table
+	union all
+	select a,0 b,c,null d from some_table group by a,c 
+  union all
+  select a,0 b,null c,d from some_table group by a,d
+) t;
+```
+
+例子：
+
+```sql
+-- 优化前
+select count(distinct id) from tablename;
+-- 优化后
+select count(1) from (select distinct id  from tablename) tmp;
+select count(1) from (select id from  tablename group by id) tmp;
+```
+
+
 
 ##### Count(Distinct) 去重统计
 
 数据量小的时候无所谓，数据量大的情况下，**由于 COUNT DISTINCT 操作需要用一个 Reduce Task 来完成，这一个 Reduce 需要处理的数据量太大，就会导致整个 Job 很难完成**， 一般 `COUNT DISTINCT` **使用先 GROUP BY 再 COUNT 的方式替换,GROUP BY分组后发到一个单独的reduce处理。**:
 
-```sql
+```shell
 # 创建一张大表
 create table bigtable(id bigint, time bigint, uid string, keyword
 string, url_rank int, click_num int, click_url string) row format delimited
@@ -2439,6 +2548,16 @@ select count(id) from (select id from bigtable group by id) a;
 ```
 
 ​		尽量避免笛卡尔积，join 的时候不加 on 条件，或者无效的 on 条件，Hive 只能使用 1 个 reducer 来完成笛卡尔积。
+
+##### 怎样做笛卡尔积
+
+当Hive设定为严格模式(hive.mapred.mode=strict)时，不允许在HQL语句中出现笛卡尔积，这实际 说明了Hive对笛卡尔积支持较弱。因为找不到 Join key，Hive 只能使用 1 个 reducer 来完成笛卡尔 积。
+
+当然也可以使用 limit 的办法来减少某个表参与 join 的数据量，但对于需要笛卡尔积语义的需求来说， 经常是一个大表和一个小表的 Join 操作，结果仍然很大(以至于无法用单机处理)，这时 MapJoin 才 是最好的解决办法。MapJoin，顾名思义，会在 Map 端完成 Join 操作。这需要将 Join 操作的一个或多 个表完全读入内存。
+
+PS:MapJoin 在子查询中可能出现未知 BUG。在大表和小表做笛卡尔积时，规避笛卡尔积的方法是， 给 Join 添加一个 Join key，原理很简单:将小表扩充一列 join key，并将小表的条目复制数倍，join key 各不相同;将大表扩充一列 join key 为随机数。
+
+**精髓就在于复制几倍，最后就有几个** **reduce** **来做，而且大表的数据是前面小表扩张** **key** **值范围里面随 机出来的，所以复制了几倍** **n****，就相当于这个随机范围就有多大** **n****，那么相应的，大表的数据就被随机 的分为了** **n** **份。并且最后处理所用的** **reduce** **数量也是** **n****，而且也不会出现数据倾斜。**
 
 ##### 行列过滤
 
@@ -2635,6 +2754,88 @@ set hive.exec.parallel=true; //打开任务并行执行
 set hive.exec.parallel.thread.number=16; //同一个 sql 允许最大并行度， 默认为 8。
 ```
 
+#### 合理利用分桶
+
+Bucket 是指将数据以指定列的值为 key 进行 hash，hash 到指定数目的桶中。这样就可以支持高效采 样了。如下例就是以 userid 这一列为 bucket 的依据，共设置 32 个 buckets。
+
+```sql
+CREATE TABLE page_view(viewTime INT, userid BIGINT,
+                    page_url STRING, referrer_url STRING,
+                    ip STRING COMMENT 'IP Address of the User')
+COMMENT 'This is the page view table'
+PARTITIONED BY(dt STRING, country STRING)
+CLUSTERED BY(userid) SORTED BY(viewTime) INTO 32 BUCKETS
+ROW FORMAT DELIMITED
+            FIELDS TERMINATED BY '1'
+            COLLECTION ITEMS TERMINATED BY '2'
+            MAP KEYS TERMINATED BY '3'
+STORED AS SEQUENCEFILE;
+```
+
+两个表以相同方式划分桶，两个表的桶个数是倍数关系
+
+```sql
+create table order(cid int,price float) clustered by(cid) into 32 buckets;
+create table customer(id int,first string) clustered by(id) into 32 buckets; select price from order t join customer s on t.cid = s.id
+```
+
+如下例所示就是采样了 page_view 中 32 个桶中的第三个桶的全部数据:
+
+```sql
+SELECT * FROM page_view TABLESAMPLE(BUCKET 3 OUT OF 32);
+```
+
+如下例所示就是采样了 page_view 中 32 个桶中的第三个桶的一半数据:
+
+```sql
+SELECT * FROM page_view TABLESAMPLE(BUCKET 3 OUT OF 64);
+```
+
+因为64 分桶，每个桶有1/2簇数据
+
+详细说明:http://blog.csdn.net/zhongqi2513/article/details/74612701
+
+总结三种采样方式:
+
+```sql
+-- 随机采样:rand() 函数
+select * from student distribute by rand() sort by rand() limit 100; select * from student order by rand() limit 100;
+数据块抽样:tablesample()函数
+select * from student tablesample(10 percent); # 百分比
+select * from student tablesample(5 rows);  # 行数
+select * from student tablesample(5 M); # 大小
+-- 分桶抽样:
+select * from student tablesample(bucket 3 out of 32);
+```
+
+#### 合理利用分区
+
+当要查询某一分区的内容时可以采用 where 语句，形似 where tablename.partition_column = a 来实现。
+
+```sql
+-- 创建含分区的表
+CREATE TABLE page_view(viewTime INT, userid BIGINT,
+                    page_url STRING, referrer_url STRING,
+                    ip STRING COMMENT 'IP Address of the User')
+PARTITIONED BY(date STRING, country STRING)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY '1'
+STORED AS TEXTFILE;
+-- 载入内容，并指定分区标志
+load data local inpath '/home/bigdata/pv_2008-06-08_us.txt' into table page_view partition(date='2008-06-08', country='US');
+-- 查询指定标志的分区内容
+SELECT page_views.* FROM page_views
+WHERE page_views.date >= '2008-03-01'
+AND page_views.date <= '2008-03-31'
+AND page_views.referrer_url like '%xyz.com;
+-- 列裁剪就是在查询时只读取需要的列，分区裁剪就是只读取需要的分区。
+-- Hive 中与列裁剪优化相关的配置项
+set hive.optimize.cp=true; -- 默认是true
+-- Hive中与分区裁剪优化相关的则是:
+set hive.optimize.pruner=true; -- 默认是true
+```
+
+
+
 #### 合并MapReduce操作
 
 Multi-Group by 是 Hive 的一个非常好的特性，它使得 Hive 中利用中间结果变得非常方便
@@ -2647,6 +2848,88 @@ INSERT OVERWRITE TABLE school_summary PARTITION(ds='2009-03-20') SELECT subq1.sc
 ```
 
 ​		查询语句使用了 Multi-Group by 特性连续 group by 了 2 次数据，使用不同的 Multi-Group by。 这一特性可以减少一次 MapReduce 操作。
+
+#### 合理利用文件存储格式
+
+​		Hive表支持的存储格式有 TextFile、SequenceFile、RCFile、Avro、ORC、Parquet等。 存储格式一般需要根据业务进行选择， 在我们的实操中，绝大多数表都采用TextFile与Parquet两种存储格式之一。extFile是最简单的存储格 式，它是纯文本记录，也是Hive的默认格式。虽然它的磁盘开销比较大，查询效率也低，但它更多地是 作为跳板来使用。RCFile、ORC、Parquet等格式的表都不能由文件直接导入数据，必须由TextFile来做 中转。 Parquet和ORC都是Apache旗下的开源列式存储格式。列式存储比起传统的行式存储更适合批 量OLAP查询，并且也支持更好的压缩和编码。
+
+​		创建表时，特别是宽表，尽量使用 ORC、Parquet 这些列式存储格式，因为列式存储的表，每一列的数 据在物理上是存储在一起的，Hive查询时会只遍历需要列数据，大大减少处理的数据量。
+
+一些常用的文件格式:
+
+```
+1、Text File format 默认格式textfile，数据不做压缩，磁盘开销大，数据解析开销大。
+2、Sequence File format
+SequenceFile是Hadoop API 提供的一种二进制文件支持，其具有使用方便、可分割、可压缩的特点。 SequenceFile 支持三种压缩选择:NONE, RECORD, BLOCK。Record压缩率低，一般建议使用BLOCK压 缩。
+3、RC file format RCFILE是一种行列存储相结合的存储方式。首先，其将数据按行分块，保证同一个record在一个块上，避免 读一个记录需要读取多个block。其次，块数据列式存储，有利于数据压缩和快速的列存取。RCFile目前没 有性能优势，只有存储上能省10%的空间。
+4、Parquet 列式数据存储。
+5、AVRO
+avro Schema 数据序列化。
+6、ORC 对RCFile做了一些优化，支持各种复杂的数据类型。ORC将行的集合存储在一个文件中，并且集合内的行数据 将以列式存储。采用列式格式，压缩非常容易，从而降低了大量的存储成本。当查询时，会查询特定列而不是 查询整行，因为记录是以列式存储的。ORC会基于列创建索引，当查询的时候会很快。
+```
+
+#### 设置压缩存储
+
+1、压缩的原因
+
+```
+Hive最终是转为MapReduce程序来执行的，而MapReduce的性能瓶颈在于网络IO和磁盘IO，要解决性能瓶 颈，最主要的是减少数据量，对数据进行压缩是个好的方式。压缩虽然是减少了数据量，但是压缩过程要消耗 CPU的，但是在Hadoop中， 往往性能瓶颈不在于CPU，CPU压力并不大，所以压缩充分利用了比较空闲的CPU
+```
+
+2、常用压缩方法对比
+
+| 压缩格式 | 是否可拆分 | 是否自带 | 压缩率 |  速度  | 是否hadoop自带 |
+| :------: | :--------: | :------: | :----: | :----: | :------------: |
+|   gzip   |     否     |    是    |  很高  | 比较快 |       是       |
+|   lzo    |     是     |    是    | 比较高 |  很快  |   否，要安装   |
+|  snappy  |     否     |    是    | 比较高 |  很快  |   否，要安装   |
+|  bzip2   |     是     |    否    |  最高  |   慢   |       是       |
+
+各个压缩方式所对应的Class类:
+
+| 压缩格式 |                     类                     |
+| :------: | :----------------------------------------: |
+|   zlib   | org.apache.hadoop.io.compress.DefaultCodec |
+|   gzip   |  org.apache.hadoop.io.compress.GzipCodec   |
+|  bzip2   |  org.apache.hadoop.io.compress.Bzip2Codec  |
+|   lzo    | org.apache.hadoop.io.compress.lzo.LzoCodec |
+|   lz4    |   org.apache.hadoop.io.compress.LzoCodec   |
+|  snappy  | org.apache.hadoop.io.compress.SnappyCodec  |
+
+ **压缩方式的选择:**
+
+压缩比率
+
+压缩解压缩速度
+
+是否支持Split
+
+**压缩使用**
+
+ Job输出文件按照block以GZip的方式进行压缩:
+
+```shell
+set mapreduce.output.fileoutputformat.compress=true # 默认值是false 
+set mapreduce.output.fileoutputformat.compress.type=BLOCK # 默认值是Record 
+set mapreduce.output.fileoutputformat.compress.codec=org.apache.hadoop.io.compress.G zipCodec # 默认值是 org.apache.hadoop.io.compress.DefaultCodec
+```
+
+ Map输出结果也以Gzip进行压缩:
+
+```shell
+set mapred.map.output.compress=true
+set mapreduce.map.output.compress.codec=org.apache.hadoop.io.compress.GzipCodec 
+#默认值是 org.apache.hadoop.io.compress.DefaultCodec
+```
+
+对Hive输出结果和中间都进行压缩:
+
+```shell
+set hive.exec.compress.output=true       # 默认值是false，不压缩
+set hive.exec.compress.intermediate=true # 默认值是false，为true时MR设置的压缩才 启用
+```
+
+
 
 #### JVM 重用
 
