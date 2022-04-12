@@ -8,7 +8,7 @@
     <artifactId>guli-video</artifactId>
     <version>1.0-SNAPSHOT</version>
     <properties>
-        <hadoop.version>2.6.0</hadoop.version>
+        <hadoop.version>3.2.3</hadoop.version>
 
     </properties>
 
